@@ -1,0 +1,89 @@
+#!/usr/bin/env zsh
+
+# produces CSV output from an OFX file
+
+# usage: ofx2csv <ofx_file>
+
+# Prints to stdout CSV, without a header, with the following fields:
+#
+# - Bank ID: Uses the 5-digit INTUIT Bank ID defined by the tag INTU.BID, if found.
+#   An index of the financial institutions for both the USA and Canada
+#   can be found here: https://ofx-prod-filist.intuit.com/qm2400/data/fidir.txt
+# - Transaction ID: For credit cards, this is very long,
+#   For bank accounts, it starts with a 9-digit bank ID,
+#   followed by am 8-digit YYYYMMDD-formatted date,
+#   followed by a 12-digit transaction number.
+#   I decided to omit a bank ID field because it can be found here,
+#   and because there is no such field for credit-card transactions
+# - Account ID: In the case of Credit Cards,
+#   only the last four digits are used.
+# - Date: Date posted in the form YYYY-MM-DD
+# - Type: Usually DEBIT or CREDIT, but I've also seen ATM
+# - Amount: No dollar sign, with or without cents,
+#   positive for credits, negative for debits.
+# - Name: A description field
+# - Memo: Further description (the seceond or more details)
+#
+
+# Requires the ofx2xml utility, which converts older versions OFX file to XML.
+# It can be downloaded from https://github.com/heckman/ofx2xml
+
+# This utility is working (so far) for my accounts, YMMV.
+# This utility only handles bank accounts and credit cards,
+# other types of accounts will cause an error.
+
+# Uncomment only one of these...
+# - To use the Inutuit Bank ID in the INTU.BID tag, if found, otherwise a blank string.
+BANK_ID="\"$(< "$1" tr -d $'\n\r\t ' | grep '<INTU.BID>' | sed -E 's/^.*<INTU.BID>([^<]*)<.*$/\1/')\""
+# - To use the FID in the BANKID tag:
+# BANK_ID='.BANKACCTFROM.BANKID'
+#   As per page 187 of v2.3 of the specification
+#   https://www.financialdataexchange.org/common/Uploaded%20files/OFX%20files/OFX%20Banking%20Specification%20v2.3.pdf#page=203
+#   This tag is supposed to be the "Routing and transit number"
+#   but my experience it is not, but seems to be an instutution number of some kind.
+#
+# More Notes:
+#   I'm using the INTU.BID because my PC Mastercard account has one, but no BANKID tag
+#   Here are the values for some of my accounts:
+#   | Bank Name | Instutition Number | BANKID tag | INTU.BID tag |
+#   |-----------|--------------------|------------|--------------|
+#   | RBC       | 003                | 900000100  | 00015        |
+#   | TD        | 004                | 300000100  | 00002        |
+#   | CIBC      | 010                | 600000100  | 00005        |
+#   | PC (MC)   | 010                |            | 00024        |
+#
+
+
+go run ofx2xml.go "$1" |
+xq -j |
+jq -r '
+	.OFX
+	| if has("BANKMSGSRSV1") then
+		.BANKMSGSRSV1.STMTTRNRS
+		| if type == "array" then .[0] else . end
+		| .STMTRS
+	elif has("CREDITCARDMSGSRSV1") then
+		.CREDITCARDMSGSRSV1.CCSTMTTRNRS
+		| if type == "array" then .[0] else . end
+		| .CCSTMTRS
+	else
+		error("Unknown OFX type")
+	end
+	| ('"$BANK_ID"') as $bank
+	| (.BANKACCTFROM.ACCTID) as $account
+	| .BANKTRANLIST.STMTTRN
+	| if type == "array" then . else [.] end
+	| map ( . + { ACCOUNTID: $account, BANKID: $bank} )
+	| .[]
+	| [
+		.BANKID,
+		.FITID,
+		.ACCOUNTID,
+		.DTPOSTED[0:4]+"-"+.DTPOSTED[4:6]+"-"+.DTPOSTED[6:8],
+		.TRNTYPE,
+		.TRNAMT,
+		.NAME,
+		.MEMO
+	]
+	| @csv
+'

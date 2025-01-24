@@ -1,0 +1,3 @@
+#!/usr/bin/env zsh
+
+go run ofx2xml.go "$1"
