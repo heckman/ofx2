@@ -1,0 +1,110 @@
+#!/usr/bin/env zsh
+# ofx
+# v0.1
+
+# combines functions of ofx2csv and ofx-range
+# the first of which outputs transaction data
+# and the second which outputs file-level information,
+# specifically the date range of the transactions in the file.
+#
+
+USE_INTU_BID=true
+
+usage(){ print '
+Usage: ofx <command> <ofx_file>
+
+Commands:
+   xml
+   json
+   csv
+   range
+'
+}
+
+main(){
+	ofx=${2:-}
+	[[ -r $ofx ]] || { usage >&2; exit 69; }
+	case ${1:-} in
+	xml) ofx2;;
+	json) json;;
+	transactions|csv) csv;;
+	range) range;;
+	bank) bank_name true;;
+	bnk) bank_name;;
+	account) account_number;;
+	*) usage >&2; exit 69;;
+	esac
+}
+intu_bid(){
+	< $ofx tr -d $'\n\r\t ' | # remove all whitespace
+	grep '<INTU.BID>' | # blank if not found
+	sed -E 's/^.*<INTU.BID>([^<]*)<.*$/\1/' # strip everything else
+}
+ofx2()( go run ofx2xml.go $ofx;)
+json(){ ofx2 | xq -j | cat; } # 'cat' prevents interactive output
+ofxq(){ json | jq -r "$@"; }
+account_number(){
+	ofxq "$_TMTTRNRS"'
+		| .BANKACCTFROM.ACCTID
+'
+}
+csv(){
+	ofxq "$_TMTTRNRS"'
+		| (.BANKACCTFROM.BANKID) as $bank
+		| (.BANKACCTFROM.ACCTID) as $account
+		| .BANKTRANLIST.STMTTRN
+		| if type == "array" then . else [.] end
+		| map (
+			. + {
+				ACCOUNTID: $account,
+				BANKID: $bank,
+				INTU_BID: "'$(intu_bid)'"
+			}
+		)
+		| .[]
+		| [
+			.INTU_BID,
+			.FITID,
+			.ACCOUNTID,
+			.DTPOSTED[0:4]+"-"+.DTPOSTED[4:6]+"-"+.DTPOSTED[6:8],
+			.TRNTYPE,
+			.TRNAMT,
+			.NAME,
+			.MEMO
+		]
+		| @csv
+	'
+}
+range(){
+	ofxq "$_TMTTRNRS"'
+		| .BANKTRANLIST
+		|
+			.DTSTART[0:4]+"-"+.DTSTART[4:6]+"-"+.DTSTART[6:8]
+			+ " to " +
+			.DTEND[0:4]+"-"+.DTEND[4:6]+"-"+.DTEND[6:8]
+	'
+}
+bank_name(){ local field
+	case ${1:-false} in false) field='$2';; *) field='$3';; esac
+	awk -F'\t' "\$1==$(intu_bid){ print $field; exit; }"	<<<"
+00015	RBC	RBC RoyalBank
+00002	TD	TD Canada Trust
+"
+}
+
+_TMTTRNRS='
+		.OFX
+		| if has("BANKMSGSRSV1") then
+			.BANKMSGSRSV1.STMTTRNRS
+			| if type == "array" then .[0] else . end
+			| .STMTRS
+		elif has("CREDITCARDMSGSRSV1") then
+			.CREDITCARDMSGSRSV1.CCSTMTTRNRS
+			| if type == "array" then .[0] else . end
+			| .CCSTMTRS
+		else
+			error("Unknown OFX type")
+		end
+'
+
+main "$@"
