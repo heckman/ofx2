@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 # ofx
-# v0.2.1
+# v0.2.2
 
 usage(){ echo '
 Usage: ofx <command> <ofx_file>
 
 Commands:
-   xml       print ofx data as xml (ofx v2)
-   json      print ofx data as json
-   csv       print transactions as CSV
-   info      print bank, account, and range info
-   range     print range of transaction dates
-   bank      print name of bank
-   bnk       print short name of bank
-   account   print account number
+   xml      print ofx data as xml (ofx v2)
+   json     print ofx data as json
+   csv      print transactions as CSV
+   csv1     print transactions as CSV with headers
+   info     print bank, account, and range info
+   range    print range of transaction dates
+   bank     print name of bank
+   bnk      print short name of bank
+   account  print account number
+   headers  print header row for CSV transactions
 '
 }
 
@@ -84,6 +86,8 @@ EOF
 # - inject INTU.BID into XML by changing <INTU.BID> to <FI><FID>
 #   doing it this way will prevent the need to read the file twice,
 #   and instead process it as a single strem.
+# 2.2 :
+# - just clean up the code a bit
 
 # TODO:
 # - provide a way to customize output
@@ -93,20 +97,63 @@ EOF
 _account_identifier='.BNS + "-" + .ACCTSFX'
 _date_range='.DSTART + " to " + .DEND'
 _default_info_format="$_account_identifier + \" from \" + $_date_range"
-_default_transaction_fields="
+
+# these are not used anywhere yet:
+_default_transaction_field_headers='[
+	"ACCOUNT",
+	"TRANSACTION ID",
+	"DATE POSTED",
+	"TYPE",
+	"DESCRIPTION",
+	"AMOUNT"
+]'
+_default_transaction_fields="[
 	$_account_identifier,
 	.FITID,
 	.DPOSTED,
 	.TRNTYPE,
 	.DESC,
 	.TRNAMT
-"
+]"
 
+# shellcheck disable=SC2016  # these variables are expanded by jq
+_stashed_vars='{
+	BANKID: $bank_id,
+	ACCTID: $account_number,
+	ACCTN: $account_number_only_digits,
+	ACCTSFX: $account_suffix,
+	DTSTART: $datetime_start,
+	DSTART:  $date_start,
+	DTEND: $datetime_end,
+	DEND: $date_end,
+	INTBID: $intu_bid,
+	BNS: $fidir[$intu_bid].short,
+	BNM: $fidir[$intu_bid].medium,
+	BNL: $fidir[$intu_bid].long
+}'
+
+_derived_txn_vars='{
+	DPOSTED: (
+		.DTPOSTED[0:4]+"-"+.DTPOSTED[4:6]+"-"+.DTPOSTED[6:8]
+	),
+	DESC: (
+		if ((.NAME//"") != "" and (.MEMO//"") != "")
+		then (.NAME//"") + "'"$_description_deliminator"'" + (.MEMO//"")
+		else (.NAME//"") + (.MEMO//"")
+		end
+	),
+	TRNAMT: ( # add zeros for cents if missing
+		.TRNAMT
+		| gsub("^(?<a>-?\\d+)$";"\(.a).00")
+		| gsub("^(?<a>-?\\d+\\.\\d)$";"\(.a)0")
+	)
+}'
 
 # this is a global variable containing the path to the OFX file
 declare ofx
 main(){
 	local cmd="${1:-}"; shift
+	[[ "$cmd" == "headers" ]] && { headers; return; }
 	for ofx in "$@"; do
 		[[ -f "$ofx" ]] || { usage >&2; exit 69; }
 		[[ -r "$ofx" ]] || { usage >&2; exit 69; }
@@ -114,11 +161,13 @@ main(){
 		xml) xml;;
 		json) json;;
 		csv|trans|transactions) csv;;
+		csv1) headers; csv;;
 		range) info "$_date_range";;
 		bank) info '.BNM';;
 		bnk) info '.BNS';;
 		info) info;;
 		account) info "$_account_identifier";;
+		headers) headers;;
 		*) usage >&2; exit 69;;
 		esac
 	done
@@ -131,23 +180,6 @@ intu_bid_to_fi_fid(){
 	sed 's/<INTU.BID>/<FI><FID>/'
 }
 
-# prints an object with bank information, to inject into jq script
-# shellcheck disable=SC2016  # these variables are expanded by jq
-_pop_vars='{
-  BANKID: $bank_id,
-  ACCTID: $account_number,
-  ACCTN: $account_bare,
-  ACCTSFX: $account_suffix,
-  DTSTART: $datetime_start,
-  DSTART:  $date_start,
-  DTEND: $datetime_end,
-  DEND: $date_end,
-  INTBID: $intu_bid,
-  BNS: $fidir[$intu_bid].short,
-  BNM: $fidir[$intu_bid].medium,
-  BNL: $fidir[$intu_bid].long
-}
-'
 
 xml(){
 	local P="$PWD"
@@ -163,7 +195,9 @@ ofxq(){
 }
 
 # shellcheck disable=SC2016  # dollarsigns are preserved for jq
-_to_transcation_list='
+# once we get to the transaction list,
+# we have access to the start and end dates of the transaction list.
+_to_transaction_list='
 	.OFX
 	| (.SIGNONMSGSRSV1.SONRS.FI.FID // "") as $intu_bid
 	| if has("BANKMSGSRSV1") then .BANKMSGSRSV1.STMTTRNRS
@@ -177,43 +211,39 @@ _to_transcation_list='
 	end
 	| ((.BANKACCTFROM.BANKID // "")+(.CCACCTFROM.BANKID // "")) as $bank_id
 	| ((.BANKACCTFROM.ACCTID // "")+(.CCACCTFROM.ACCTID // "")) as $account_number
-	| ( $account_number | gsub("[^A-Za-z0-9]"; "") ) as $account_bare
-	| ( $account_bare[-4:] ) as $account_suffix
+	| ( $account_number | gsub("[^A-Za-z0-9]"; "") ) as $account_number_only_digits
+	| ( $account_number_only_digits[-4:] ) as $account_suffix
 	| .BANKTRANLIST
 	| (.DTSTART // "") as $datetime_start
 	| ($datetime_start[0:4]+"-"+$datetime_start[4:6]+"-"+$datetime_start[6:8]) as $date_start
 	| (.DTEND // "") as $datetime_end
 	| ($datetime_end[0:4]+"-"+$datetime_end[4:6]+"-"+$datetime_end[6:8]) as $date_end
 '
+_each_transaction='
+	.STMTTRN | if type == "array" then . else [.] end
+	| .[]
+	| . + '"$_derived_txn_vars"
+
+
 info(){ local _format="${1:-$_default_info_format}"
-	 ofxq "$_to_transcation_list | . + $_pop_vars | $_format"
+	ofxq "
+	 	$_to_transaction_list
+		| . + $_stashed_vars
+		| $_format
+	"
 }
 
 # shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
-csv(){ local _fields="${1:-$_default_transaction_fields}"
-	ofxq "$_to_transcation_list"'
-	| .STMTTRN | if type == "array" then . else [.] end
-	| map ( . +
-		{
-			DPOSTED: (
-				.DTPOSTED[0:4]+"-"+.DTPOSTED[4:6]+"-"+.DTPOSTED[6:8]
-			),
-			DESC: (
-				if ((.NAME//"") != "" and (.MEMO//"") != "")
-				then (.NAME//"") + "'"$_description_deliminator"'" + (.MEMO//"")
-				else (.NAME//"") + (.MEMO//"")
-				end
-			),
-			TRNAMT: ( # add zeros for cents if missing
-				.TRNAMT
-				| gsub("^(?<a>-?\\d+)$";"\(.a).00")
-				| gsub("^(?<a>-?\\d+\\.\\d)$";"\(.a)0")
-			)
-		} + '"$_pop_vars"' )
-	| .[]
-	| [ '"$_fields"' ]
-	| @csv
-	'
+csv(){ local _format="${1:-$_default_transaction_fields}"
+	ofxq "
+		$_to_transaction_list
+		| $_each_transaction
+		| . + $_stashed_vars
+		| $_format
+		| @csv
+	"
 }
-
+headers(){
+	jq -r '. | @csv' <<<"$_default_transaction_field_headers"
+}
 main "$@"
