@@ -40,7 +40,13 @@ intu_bid(){
 	grep '<INTU.BID>' | # blank if not found
 	sed -E 's/^.*<INTU.BID>([^<]*)<.*$/\1/' # strip everything else
 }
-ofx2()( go run ofx2xml.go $ofx;)
+ofx2(){
+	P="$PWD"
+	cd src/ofx2xml || die "Error: cant enter ofx2xml directory"
+	go run ofx2xml.go "$P/$ofx"
+	cd "$P" || die die "Error: cant re-enter original working directory"
+}
+die(){ echo "$@" >&2; exit 1; }
 json(){ ofx2 | xq -j | cat; } # 'cat' prevents interactive output
 ofxq(){ json | jq -r "$@"; }
 account_number(){
