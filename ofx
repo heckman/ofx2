@@ -211,28 +211,34 @@ xml(){
 json(){
 	xml | xq -j | cat  # `cat` prevents output from being interactive (which causes errors for ofx2xml)
 }
+
+# derives json then outputs , on the first line, summary info,
+# then, on the subsequent lines, transaction info
+parse(){
+	local _info_format="${1:-$_default_info_format}"
+	local _txn_format="${2:-$_default_transaction_fields} | @csv"
+	ofxq  "
+	 	$_to_transaction_list
+		| (
+			( . + $_stashed_vars | $_info_format ),
+			(
+				$_each_transaction
+				| . + $_stashed_vars
+				| $_txn_format
+			)
+		)
+	"
+}
+
 ofxq(){
 	json | jq -r --argjson fidir "$_fidir" "$@"
 }
 
-info(){ local _format="${1:-$_default_info_format}"
-	ofxq "
-	 	$_to_transaction_list
-		| . + $_stashed_vars
-		| $_format
-	"
-}
+info(){ parse "${1:-}" "${2:-}" | head -n 1; }
 
 # shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
-csv(){ local _format="${1:-$_default_transaction_fields}"
-	ofxq "
-		$_to_transaction_list
-		| $_each_transaction
-		| . + $_stashed_vars
-		| $_format
-		| @csv
-	"
-}
+csv(){ parse "${1:-}" "${2:-}" | tail -n +2; }
+
 headers(){
 	jq -r '. | @csv' <<<"$_default_transaction_field_headers"
 }
