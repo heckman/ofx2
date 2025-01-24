@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ofx
-# v0.2
+# v0.2.1
 
 usage(){ echo '
 Usage: ofx <command> <ofx_file>
@@ -49,18 +49,19 @@ _description_deliminator='; '
 # _description_deliminator='
 # '
 
-# For bank names populate this list with the financial institutions you use.
-# INTU.BID is the Inutuit Bank ID; the values for North-American institutions can be found here:
+# Add an object for each the financial institutions you use.
+# They are indexed by their INTU.BID value.
+# INTU.BID is a Inutuit Bank ID; the values for North-American institutions can be found here:
 # https://ofx-prod-filist.intuit.com/qm2400/data/fidir.txt
-# each line should be tab-separated values for: INTU.BID, short name, medium name, long name
-# in any case a bank can't be found on this list, the INTU.BID will be used as the bank name.
-INTU_BIDS="
-00002	TD	TD Canada Trust	Toronto Dominion Canada Trust
-00005	CIBC	CIBC	Canadian Imperial Bank of Commerce
-00015	RBC	RBC RoyalBank	Royal Bank of Canada
-00024	PC	PC Financial	President's Choice Financial
-"
-
+read -r -d "" _fidir <<'EOF'
+{
+  "00002": {"short": "TD",   "medium": "TD Canada Trust", "long": "Toronto Dominion Canada Trust" },
+  "00004": {"short": "FK",   "medium": "FK Canada Fake", "long": "Fakey Fake Financial Canada" },
+  "00005": {"short": "CIBC", "medium": "CIBC",            "long": "Canadian Imperial Bank of Commerce" },
+  "00015": {"short": "RBC",  "medium": "RBC RoyalBank",   "long": "Royal Bank of Canada" },
+  "00024": {"short": "PC",   "medium": "PC Financial",    "long": "President's Choice Financial" }
+}
+EOF
 
 # a NOTE on the naming conventions
 #
@@ -79,13 +80,15 @@ INTU_BIDS="
 # it is then injected into the jq script as a variable,
 # along with values for the bank name and initials.
 
+# 2.1 :
+# - inject INTU.BID into XML by changing <INTU.BID> to <FI><FID>
+#   doing it this way will prevent the need to read the file twice,
+#   and instead process it as a single strem.
+
 # TODO:
 # - provide a way to customize output
 # - provide the ability to create well-named csv files
 # - provide a way to rename ofx files
-# - inject INTU.BID into XML by changing <INTU.BID> to <FI><FID>
-#   doing it this way will prevent the need to read the file twice,
-#   and instead process it as a single strem.
 
 _account_identifier='.BNS + "-" + .ACCTSFX'
 _date_range='.DSTART + " to " + .DEND'
@@ -121,53 +124,48 @@ main(){
 	done
 }
 
-# Extracts the Intuit Bank ID from the <INTU.BID> SGML tag in the OFX file.
-# Note that this tag is removed when the OFX is uplifted to XML
-intu_bid(){
-	< "$ofx" tr -d $'\n\r\t ' | # remove all whitespace
-	grep '<INTU.BID>' | # blank if not found
-	sed -E 's/^.*<INTU.BID>([^<]*)<.*$/\1/' # strip everything else
+# Replace the <INTU.BID> tag with <FI><FID>, which is maintained by ofx2xml
+# ofx2xml uses the ofxgo library to uplifting it to v2 by parsing and remarshalling it,
+# and it doesn't support the <INTU.BID> tag
+intu_bid_to_fi_fid(){
+	sed 's/<INTU.BID>/<FI><FID>/'
 }
 
 # prints an object with bank information, to inject into jq script
-_pop_vars(){
-	awk -F'\t' -v BID="$(intu_bid)" '
-	BEGIN{
-		print("{BANKID: $bank_id, ACCTID: $account_number, ACCTN: $account_bare, ACCTSFX: $account_suffix, DTSTART: $datetime_start, DSTART:  $date_start, DTEND: $datetime_end, DEND: $date_end ")
-	}
-	$1==BID{
-		printf(", INTBID: \"%s\", BNS: \"%s\", BNM: \"%s\", BNL: \"%s\"", $1, $2, $3, $4 )
-		bank_found=1
-		exit
-	}
-	END{
-		if(bank_found==0){
-			printf(", INTBID: \"%s\", BNS: \"%s\", BNM: \"%s\", BNL: \"%s\"", BID, BID, BID, BID )
-		}
-		print "}"
-	}' <<<"$INTU_BIDS"
+# shellcheck disable=SC2016  # these variables are expanded by jq
+_pop_vars='{
+  BANKID: $bank_id,
+  ACCTID: $account_number,
+  ACCTN: $account_bare,
+  ACCTSFX: $account_suffix,
+  DTSTART: $datetime_start,
+  DSTART:  $date_start,
+  DTEND: $datetime_end,
+  DEND: $date_end,
+  INTBID: $intu_bid,
+  BNS: $fidir[$intu_bid].short,
+  BNM: $fidir[$intu_bid].medium,
+  BNL: $fidir[$intu_bid].long
 }
+'
 
 xml(){
-	P="$PWD"
+	local P="$PWD"
 	cd src/ofx2xml || die "Error: cant enter ofx2xml directory"
-	go run ofx2xml.go "$P/$ofx"
+	go run ofx2xml.go <( intu_bid_to_fi_fid <"$P/$ofx")
 	cd "$P" || die die "Error: cant re-enter original working directory"
 }
-
-die(){ echo "$@" >&2; exit 1; }
-
 json(){
 	xml | xq -j | cat  # `cat` prevents output from being interactive (which causes errors for ofx2xml)
 }
-
 ofxq(){
-	json | jq -r "$@"
+	json | jq -r --argjson fidir "$_fidir" "$@"
 }
 
 # shellcheck disable=SC2016  # dollarsigns are preserved for jq
 _to_transcation_list='
 	.OFX
+	| (.SIGNONMSGSRSV1.SONRS.FI.FID // "") as $intu_bid
 	| if has("BANKMSGSRSV1") then .BANKMSGSRSV1.STMTTRNRS
 		| if type == "array" then .[0] else . end
 		| .STMTRS
@@ -188,7 +186,7 @@ _to_transcation_list='
 	| ($datetime_end[0:4]+"-"+$datetime_end[4:6]+"-"+$datetime_end[6:8]) as $date_end
 '
 info(){ local _format="${1:-$_default_info_format}"
-	 ofxq "$_to_transcation_list | . + $(_pop_vars) | $_format"
+	 ofxq "$_to_transcation_list | . + $_pop_vars | $_format"
 }
 
 # shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
@@ -211,7 +209,7 @@ csv(){ local _fields="${1:-$_default_transaction_fields}"
 				| gsub("^(?<a>-?\\d+)$";"\(.a).00")
 				| gsub("^(?<a>-?\\d+\\.\\d)$";"\(.a)0")
 			)
-		} + '"$(_pop_vars)"' )
+		} + '"$_pop_vars"' )
 	| .[]
 	| [ '"$_fields"' ]
 	| @csv
