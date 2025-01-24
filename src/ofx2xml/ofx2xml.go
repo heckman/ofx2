@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/aclindsa/ofxgo"
+	"github.com/icholy/replace"
 )
 
 func printOFXFileAsXML(filename string) error {
@@ -17,8 +18,12 @@ func printOFXFileAsXML(filename string) error {
 	}
 	defer file.Close()
 
+	tiddled := replace.Chain(file,
+		replace.String("<INTU.BID>", "<FI><FID>"),
+	)
+
 	// Parse OFX data using ofxgo library
-	response, err := ofxgo.ParseResponse(file)
+	response, err := ofxgo.ParseResponse(tiddled)
 	if err != nil {
 		return fmt.Errorf("error parsing OFX file %s: %v", filename, err)
 	}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ofx
-# v0.2.2
+# v0.2.3
 
 usage(){ echo '
 Usage: ofx <command> <ofx_file>
@@ -149,51 +149,6 @@ _derived_txn_vars='{
 	)
 }'
 
-# this is a global variable containing the path to the OFX file
-declare ofx
-main(){
-	local cmd="${1:-}"; shift
-	[[ "$cmd" == "headers" ]] && { headers; return; }
-	for ofx in "$@"; do
-		[[ -f "$ofx" ]] || { usage >&2; exit 69; }
-		[[ -r "$ofx" ]] || { usage >&2; exit 69; }
-		case "$cmd" in
-		xml) xml;;
-		json) json;;
-		csv|trans|transactions) csv;;
-		csv1) headers; csv;;
-		range) info "$_date_range";;
-		bank) info '.BNM';;
-		bnk) info '.BNS';;
-		info) info;;
-		account) info "$_account_identifier";;
-		headers) headers;;
-		*) usage >&2; exit 69;;
-		esac
-	done
-}
-
-# Replace the <INTU.BID> tag with <FI><FID>, which is maintained by ofx2xml
-# ofx2xml uses the ofxgo library to uplifting it to v2 by parsing and remarshalling it,
-# and it doesn't support the <INTU.BID> tag
-intu_bid_to_fi_fid(){
-	sed 's/<INTU.BID>/<FI><FID>/'
-}
-
-
-xml(){
-	local P="$PWD"
-	cd src/ofx2xml || die "Error: cant enter ofx2xml directory"
-	go run ofx2xml.go <( intu_bid_to_fi_fid <"$P/$ofx")
-	cd "$P" || die die "Error: cant re-enter original working directory"
-}
-json(){
-	xml | xq -j | cat  # `cat` prevents output from being interactive (which causes errors for ofx2xml)
-}
-ofxq(){
-	json | jq -r --argjson fidir "$_fidir" "$@"
-}
-
 # shellcheck disable=SC2016  # dollarsigns are preserved for jq
 # once we get to the transaction list,
 # we have access to the start and end dates of the transaction list.
@@ -224,6 +179,44 @@ _each_transaction='
 	| .[]
 	| . + '"$_derived_txn_vars"
 
+
+# this is a global variable containing the path to the OFX file
+declare ofx
+
+main(){
+	local cmd="${1:-}"; shift
+	[[ "$cmd" == "headers" ]] && { headers; return; }
+	for ofx in "$@"; do
+		[[ -f "$ofx" ]] || { usage >&2; exit 69; }
+		[[ -r "$ofx" ]] || { usage >&2; exit 69; }
+		case "$cmd" in
+		xml) xml;;
+		json) json;;
+		csv|trans|transactions) csv;;
+		csv1) headers; csv;;
+		range) info "$_date_range";;
+		bank) info '.BNM';;
+		bnk) info '.BNS';;
+		info) info;;
+		account) info "$_account_identifier";;
+		headers) headers;;
+		*) usage >&2; exit 69;;
+		esac
+	done
+}
+
+xml(){
+	local P="$PWD"
+	cd src/ofx2xml || die "Error: cant enter ofx2xml directory"
+	go run ofx2xml.go "$P/$ofx"
+	cd "$P" || die die "Error: cant re-enter original working directory"
+}
+json(){
+	xml | xq -j | cat  # `cat` prevents output from being interactive (which causes errors for ofx2xml)
+}
+ofxq(){
+	json | jq -r --argjson fidir "$_fidir" "$@"
+}
 
 info(){ local _format="${1:-$_default_info_format}"
 	ofxq "
