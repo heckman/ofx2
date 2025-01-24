@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 # ofx
-# v0.2.3
+# v0.3
 
 usage(){ echo '
 Usage: ofx <command> <ofx_file>
 
 Commands:
-   xml      print ofx data as xml (ofx v2)
-   json     print ofx data as json
-   csv      print transactions as CSV
-   csv1     print transactions as CSV with headers
-   info     print bank, account, and range info
-   range    print range of transaction dates
-   bank     print name of bank
-   bnk      print short name of bank
-   account  print account number
-   headers  print header row for CSV transactions
+   xml              print ofx data as xml (ofx v2)
+   json             print ofx data as json
+   csv              write transactions to a CSV file and rename OFX file
+   trans            print transactions as CSV with headers
+   trans-headers    print transactions as CSV with headers
+   info             print bank, account, and range info
+   range            print range of transaction dates
+   bank             print name of bank
+   bnk              print shorter name of bank
+   baank            print longer name of bank
+   account          print account number
+   headers          print header row for CSV transactions
 '
 }
 
@@ -68,11 +70,10 @@ _description_deliminator='; '
 # _description_deliminator='
 # '
 
-_account_identifier='.BNS + "-" + .ACCTSFX'
-_date_range='.DSTART + " to " + .DEND'
-_default_info_format="$_account_identifier + \" from \" + $_date_range"
+# these are used for the info command and when (re)naming files
+_filename_format='.BNS + "-" + .ACCTSFX + " -- " + (.DSTART | gsub("-(?<d>\\d\\d)$"; "\(.d)")) + " - " + (.DEND | gsub("-(?<d>\\d\\d)$"; "\(.d)"))'
 
-# these are not used anywhere yet:
+# this jq array is used to define the headers for the transaction fields:
 _default_transaction_field_headers='[
 	"ACCOUNT",
 	"TRANSACTION ID",
@@ -81,19 +82,26 @@ _default_transaction_field_headers='[
 	"DESCRIPTION",
 	"AMOUNT"
 ]'
-_default_transaction_fields="[
-	$_account_identifier,
+
+# this jq array specifies fields to include for transactions:
+_default_transaction_fields='[
+	(.BNS + "-" + .ACCTSFX),
 	.FITID,
 	.DPOSTED,
 	.TRNTYPE,
 	.DESC,
 	.TRNAMT
-]"
+]'
+
+# default options, in the future will be adjustable in command-line options
+FORCE_OVERWRITE=true
+RENAME_OFX=true
+CSV_HEADERS=false
 
 
+set -euo pipefail
 
-
-# this is a global variable containing the path to the OFX file
+# this is a global variable containing the path to the current OFX file
 declare ofx
 
 main(){
@@ -104,19 +112,39 @@ main(){
 		[[ -r "$ofx" ]] || { usage >&2; exit 69; }
 		case "$cmd" in
 		xml) xml;;
-		json) json;;
-		csv|trans|transactions) csv;;
-		csv1) headers; csv;;
-		range) info "$_date_range";;
+		json) xml | xq -j | cat;;
+		csv) csv;;
+		trans|transactions) transactions;;
+		trans-headers) headers; transactions;;
+		range) info '.DSTART + " to " + .DEND';;
 		bank) info '.BNM';;
 		bnk) info '.BNS';;
-		info) info;;
-		account) info "$_account_identifier";;
+		baank) info '.BNL';;
+		info) info '.BNL + ", account " + .ACCTID + ", from " + .DSTART + " to " + .DEND + "."' ;;
+		account) info '.ACCTID';;
 		headers) headers;;
 		*) usage >&2; exit 69;;
 		esac
 	done
 }
+
+
+# writes a csv file, optionally also renames the original ofx file
+#
+# shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
+csv(){
+	parse "${1:-$_filename_format}" "${2:-$_default_transaction_fields} | @csv" | {
+		read -r info_string
+		filename="${info_string}.csv"
+		[[ -e "$filename" ]] && ! $FORCE_OVERWRITE && die "Error: $filename already exists."
+		{
+			$CSV_HEADERS && headers
+			cat -
+		} > "$filename"
+		$RENAME_OFX && mv "$ofx" "${info_string}.ofx"
+	}
+}
+
 
 xml(){
 	ofx2xml "$ofx"
@@ -124,11 +152,16 @@ xml(){
 json(){
 	xml | xq -j | cat  # `cat` prevents output from being interactive (which causes errors for ofx2xml)
 }
-info(){ parse "${1:-}" "${2:-}" | head -n 1; }
+info(){ parse "$1" | head -n 1; }
 
 # shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
-csv(){ parse "${1:-}" "${2:-}" | tail -n +2; }
+transactions(){ parse '' "${2:-$_default_transaction_fields} | @csv" | tail -n +2; }
 
+
+die(){
+	echo "$@" >&2
+	exit 1
+}
 headers(){
 	jq -r '. | @csv' <<<"$_default_transaction_field_headers"
 }
@@ -136,8 +169,8 @@ headers(){
 # then, on the subsequent lines, transaction info
 
 parse(){
-	local _info_format="${1:-$_default_info_format}"
-	local _txn_format="${2:-$_default_transaction_fields} | @csv"
+	local _info_format="${1:-\"\"}"
+	local _txn_format="${2:-\"\"}"
 	# shellcheck disable=SC2016 # the dollarsigns are jq variables
 	json | jq -r --argjson fidir "$_fidir" '
 	.OFX
@@ -197,7 +230,8 @@ _derived_transaction_fields='{
 		else (.NAME//"") + (.MEMO//"")
 		end
 	),
-	TRNAMT: ( # add zeros for cents if missing
+	# in transaction amounts, add zeros for cents if missing
+	TRNAMT: (
 		.TRNAMT
 		| gsub("^(?<a>-?\\d+)$";"\(.a).00")
 		| gsub("^(?<a>-?\\d+\\.\\d)$";"\(.a)0")
