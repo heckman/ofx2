@@ -116,21 +116,6 @@ _default_transaction_fields="[
 	.TRNAMT
 ]"
 
-# shellcheck disable=SC2016  # these variables are expanded by jq
-_stashed_vars='{
-	BANKID: $bank_id,
-	ACCTID: $account_number,
-	ACCTN: $account_number_only_digits,
-	ACCTSFX: $account_suffix,
-	DTSTART: $datetime_start,
-	DSTART:  $date_start,
-	DTEND: $datetime_end,
-	DEND: $date_end,
-	INTBID: $intu_bid,
-	BNS: $fidir[$intu_bid].short,
-	BNM: $fidir[$intu_bid].medium,
-	BNL: $fidir[$intu_bid].long
-}'
 
 _derived_txn_vars='{
 	DPOSTED: (
@@ -154,7 +139,12 @@ _derived_txn_vars='{
 # we have access to the start and end dates of the transaction list.
 _to_transaction_list='
 	.OFX
-	| (.SIGNONMSGSRSV1.SONRS.FI.FID // "") as $intu_bid
+	| ({ INTBID: (.SIGNONMSGSRSV1.SONRS.FI.FID // "") }) as $props
+	| ( $props + {
+		BNS: $fidir[$props.INTBID].short,
+		BNM: $fidir[$props.INTBID].medium,
+		BNL: $fidir[$props.INTBID].long
+		} ) as $props
 	| if has("BANKMSGSRSV1") then .BANKMSGSRSV1.STMTTRNRS
 		| if type == "array" then .[0] else . end
 		| .STMTRS
@@ -164,15 +154,19 @@ _to_transaction_list='
 	else
 		error("Unknown OFX type")
 	end
-	| ((.BANKACCTFROM.BANKID // "")+(.CCACCTFROM.BANKID // "")) as $bank_id
-	| ((.BANKACCTFROM.ACCTID // "")+(.CCACCTFROM.ACCTID // "")) as $account_number
-	| ( $account_number | gsub("[^A-Za-z0-9]"; "") ) as $account_number_only_digits
-	| ( $account_number_only_digits[-4:] ) as $account_suffix
+	| ( $props + {
+		BANKID: ((.BANKACCTFROM.BANKID // "")+(.CCACCTFROM.BANKID // "")),
+		ACCTID: ((.BANKACCTFROM.ACCTID // "")+(.CCACCTFROM.ACCTID // "")),
+		DTSTART: (.BANKTRANLIST.DTSTART // ""),
+		DTEND: (.BANKTRANLIST.DTEND // "")
+		} ) as $props
+	| ( $props + {
+		ACCTN: ($props.ACCTID | gsub("[^A-Za-z0-9]"; "")),
+		ACCTSFX: ($props.ACCTID | gsub("[^A-Za-z0-9]"; "") | .[-4:]),
+		DSTART: ($props.DTSTART[0:4]+"-"+$props.DTSTART[4:6]+"-"+$props.DTSTART[6:8]),
+		DEND: ($props.DTEND[0:4]+"-"+$props.DTEND[4:6]+"-"+$props.DTEND[6:8])
+		}) as $props
 	| .BANKTRANLIST
-	| (.DTSTART // "") as $datetime_start
-	| ($datetime_start[0:4]+"-"+$datetime_start[4:6]+"-"+$datetime_start[6:8]) as $date_start
-	| (.DTEND // "") as $datetime_end
-	| ($datetime_end[0:4]+"-"+$datetime_end[4:6]+"-"+$datetime_end[6:8]) as $date_end
 '
 _each_transaction='
 	.STMTTRN | if type == "array" then . else [.] end
@@ -220,10 +214,10 @@ parse(){
 	ofxq  "
 	 	$_to_transaction_list
 		| (
-			( . + $_stashed_vars | $_info_format ),
+			( . + \$props | $_info_format ),
 			(
 				$_each_transaction
-				| . + $_stashed_vars
+				| . + \$props
 				| $_txn_format
 			)
 		)
