@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#
+# removes compiled binaries
+
+root="$(git rev-parse --show-toplevel)"
+bin="$root/bin"
+
+clean_ofx2xml(){
+	rm "$bin/ofx2xml"
+}
+
+clean_ofx2xml && echo "OK: removed ofx2xml"
+

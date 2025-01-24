@@ -206,10 +206,7 @@ main(){
 }
 
 xml(){
-	local P="$PWD"
-	cd src/ofx2xml || die "Error: cant enter ofx2xml directory"
-	go run ofx2xml.go "$P/$ofx"
-	cd "$P" || die die "Error: cant re-enter original working directory"
+	ofx2xml "$ofx"
 }
 json(){
 	xml | xq -j | cat  # `cat` prevents output from being interactive (which causes errors for ofx2xml)

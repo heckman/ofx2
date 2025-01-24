@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# builds compiled binaries
+
+root="$(git rev-parse --show-toplevel)"
+bin="$root/bin"
+
+build_ofx2xml(){
+	cd "$root/src/ofx2xml" || return 1
+	go build -o "$bin" ofx2xml.go
+}
+
+build_ofx2xml && echo "OK: built ofx2xml"
+

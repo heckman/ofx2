@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# ofx2xml
+#
+# wrapper to run go program without building
+# when the binary has been built it should shadow this script
+
+root="$(git rev-parse --show-toplevel)"
+
+run_ofx2xml(){
+	cd "$root/src/ofx2xml" || return 1
+	go run ofx2xml.go "$1"
+}
+
+run_ofx2xml "$(realpath "$1")" || {
+	echo "FAIL: could not run ofx2xml." >&2
+	exit 1
+}
