@@ -2,22 +2,38 @@
 # ofx
 # v0.3
 
+
 usage(){ echo '
 Usage: ofx <command> <ofx_file>
 
-Commands:
-   xml              print ofx data as xml (ofx v2)
-   json             print ofx data as json
-   csv              write transactions to a CSV file and rename OFX file
-   trans            print transactions as CSV with headers
-   trans-headers    print transactions as CSV with headers
-   info             print bank, account, and range info
-   range            print range of transaction dates
-   bank             print name of bank
-   bnk              print shorter name of bank
-   baank            print longer name of bank
-   account          print account number
-   headers          print header row for CSV transactions
+Commands with options:
+
+   csv       print transactions as CSV
+   tsv       print transactions as TSV
+
+   The above commands can be followed the following options.
+   The filename is generated from the contents of the file.
+
+   -w        write to file with generated instead of toscreen
+   -o        write to file with same basename as ofx file
+   -f        replace any existing files when writing
+   -r        rename ofx file with generated name
+   -H        include a header row (for csv and tsv only)
+
+More commands, without options:
+(Options provided for these commands will be silently ignored)
+
+   xml       print all ofx data as xml (ofx v2)
+   json      print all ofx data as json
+   info      print bank, account, and date-range
+   range     print range of transaction dates
+   bank      print name of bank
+   bnk       print shorter name of bank
+   baank     print longer name of bank
+   account   print account number
+   rename    rename ofx file
+   convert   shortcut for csv command with -w, -f and -r options
+
 '
 }
 
@@ -93,11 +109,26 @@ _default_transaction_fields='[
 	.TRNAMT
 ]'
 
-# default options, in the future will be adjustable in command-line options
-FORCE_OVERWRITE=true
-RENAME_OFX=true
-CSV_HEADERS=false
+_default_info_string='.BNL + ", account " + .ACCTID + ", from " + .DSTART + " to " + .DEND + "."'
+_default_range_string='.DSTART + " to " + .DEND'
 
+
+# default options, in the future will be adjustable in command-line options
+WRITE_TO_FILE=false
+NAME_LIKE_OFX=false
+FORCE_OVERWRITE=false
+RENAME_OFX=false
+HEADERS=false
+new_filename=
+
+# error exit codes
+declare -Air ERR=(
+	[BAD_OPT]=2 # invalid command-line option
+	[NO_ARG]=3  # command-line option missing required argument
+	[PANIC]=8 # generic internal error; this should never happen
+	[GETOPTS_FAIL]=9 #
+	[FILE_EXISTS]=12 # file already exists and not overwriting
+)
 
 set -euo pipefail
 
@@ -105,46 +136,99 @@ set -euo pipefail
 declare ofx
 
 main(){
+	parse_options "$@" || shift $?
 	local cmd="${1:-}"; shift
-	[[ "$cmd" == "headers" ]] && { headers; return; }
+	parse_options "$@" || shift $?
 	for ofx in "$@"; do
-		[[ -f "$ofx" ]] || { usage >&2; exit 69; }
-		[[ -r "$ofx" ]] || { usage >&2; exit 69; }
+		[[ -f "$ofx" ]] || die "File not found: $ofx" ${ERR[NO_ARG]}
+		[[ -r "$ofx" ]] || die "Can't read file: $ofx" ${ERR[NO_ARG]}
 		case "$cmd" in
 		xml) xml;;
 		json) xml | xq -j | cat;;
-		csv) csv;;
-		trans|transactions) transactions;;
-		trans-headers) headers; transactions;;
-		range) info '.DSTART + " to " + .DEND';;
+		csv) tabular csv;;
+		tsv) tabular tsv;;
+		info) info "$_default_info_string" ;;
+		range) info "$_default_range_string";;
 		bank) info '.BNM';;
 		bnk) info '.BNS';;
 		baank) info '.BNL';;
-		info) info '.BNL + ", account " + .ACCTID + ", from " + .DSTART + " to " + .DEND + "."' ;;
 		account) info '.ACCTID';;
-		headers) headers;;
-		*) usage >&2; exit 69;;
+		rename) rename "$(info "$_filename_format")";;
+		convert)
+			WRITE_TO_FILE=true
+			FORCE_OVERWRITE=true
+			RENAME_OFX=true
+			tabular csv
+			;;
+		*) die "Unknown command '$cmd'. Use -h for help." ${ERR[BAD_OPT]};;
 		esac
 	done
 }
-
-
-# writes a csv file, optionally also renames the original ofx file
-#
-# shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
-csv(){
-	parse "${1:-$_filename_format}" "${2:-$_default_transaction_fields} | @csv" | {
-		read -r info_string
-		filename="${info_string}.csv"
-		[[ -e "$filename" ]] && ! $FORCE_OVERWRITE && die "Error: $filename already exists."
-		{
-			$CSV_HEADERS && headers
-			cat -
-		} > "$filename"
-		$RENAME_OFX && mv "$ofx" "${info_string}.ofx"
-	}
+		# shellcheck disable=SC2015  # using with simple assigment
+rename(){
+	local new_filename="$1.ofx"
+	if [[ -e "$new_filename" ]] && ! $FORCE_OVERWRITE
+	then die "File already exists: $new_filename" ${ERR[FILE_EXISTS]}
+	fi
+	mv "$ofx" "$new_filename"
+}
+parse_options(){
+	[[ "$1" == '--help' ]] && { usage && exit 0; }
+	while getopts ":hwofrH" opt
+	do
+		case "$opt" in
+		h) usage && exit 0;;
+		w) WRITE_TO_FILE=true;;
+		o) WRITE_TO_FILE=true; NAME_LIKE_OFX=true;;
+		f) FORCE_OVERWRITE=true;;
+		r) RENAME_OFX=true;;
+		H) HEADERS=true;;
+		:) die "Option -$OPTARG requires an argument" ${ERR[NO_ARG]};;
+		\?) die "Invalid option: -$OPTARG" ${ERR[BAD_OPT]};;
+		*) die_hard "Unhandled option: $opt" ${ERR[GETOPTS_FAIL]};;
+		esac
+	done
+	return $(( OPTIND - 1 ))
 }
 
+die(){ local message=$1; declare -i exit_code=$2
+	echo "$message" >&2
+	exit $exit_code
+}
+
+die_hard(){ declare -i message=$1 exit_code=$2
+	die \
+		"Internal error on line $( caller | sed 's/ / of /') \
+		$message" $exit_code
+}
+# shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
+# capture a string to be used as the filename in case we need it
+tabular(){ local _table_format="${1}";
+	parse "$_filename_format" "$_default_transaction_fields | @${_table_format}" | {
+		read -r info_string
+		if $WRITE_TO_FILE
+		then
+			if $NAME_LIKE_OFX
+			then
+				filename="$(basename -s.ofx "$ofx").${_table_format}"
+			else
+				filename="${info_string}.${_table_format}"
+			fi
+			if [[ -e "$filename" ]] && ! $FORCE_OVERWRITE
+			then die "Error: $filename already exists." ${ERR[FILE_EXISTS]}
+			else
+				{
+					$HEADERS && headers "${_table_format}"
+					cat -
+				} > "$filename"
+			fi
+		else
+			$HEADERS && headers "${_table_format}"
+			cat -
+		fi
+		$RENAME_OFX && rename "$info_string"
+	}
+}
 
 xml(){
 	ofx2xml "$ofx"
@@ -154,20 +238,12 @@ json(){
 }
 info(){ parse "$1" | head -n 1; }
 
-# shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
-transactions(){ parse '' "${2:-$_default_transaction_fields} | @csv" | tail -n +2; }
-
-
-die(){
-	echo "$@" >&2
-	exit 1
+headers(){ local _table_format="${1}";
+	jq -r ". | @${_table_format}" <<<"$_default_transaction_field_headers"
 }
-headers(){
-	jq -r '. | @csv' <<<"$_default_transaction_field_headers"
-}
-# derives json then outputs , on the first line, summary info,
+
+# derives json then outputs, on the first line, summary info,
 # then, on the subsequent lines, transaction info
-
 parse(){
 	local _info_format="${1:-\"\"}"
 	local _txn_format="${2:-\"\"}"
