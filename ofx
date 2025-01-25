@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # ofx
-# v0.3
+# v0.4
 
 # parse ofx files
 # and write transactions to csv/tsv files
