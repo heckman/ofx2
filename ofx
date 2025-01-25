@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
+# Copyright (c) 2025 Erik Ben Heckman
+# SPDX-License-Identifier: MIT
+#
 # ofx
 # v0.3
 
+# parse ofx files
+# and write transactions to csv/tsv files
 
 usage(){ echo '
-Usage: ofx <command> <ofx_file>
+Usage: ofx <command> <ofx_file> [<another_ofx_file> ...]
 
 Commands with options:
 
-   csv       print transactions as CSV
-   tsv       print transactions as TSV
+   csv       print transactions to stdout as CSV
+   tsv       print transactions to stdout as TSV
 
    The above commands can be followed the following options.
    The filename is generated from the contents of the file.
 
-   -w        write to file with generated instead of toscreen
+   -w        write to file with auto-generated name rather than to stdout
    -o        write to file with same basename as ofx file
-   -f        replace any existing files when writing
-   -r        rename ofx file with generated name
-   -H        include a header row (for csv and tsv only)
+   -f        replace any existing files when writing or renaming files
+   -r        rename ofx file to auto-generated name
+   -H        include a header row
 
 More commands, without options:
 (Options provided for these commands will be silently ignored)
@@ -44,13 +49,18 @@ More commands, without options:
 _fidir='
 {
   "00002": {"short": "TD",   "medium": "TD Canada Trust", "long": "Toronto Dominion Canada Trust" },
-  "00004": {"short": "FK",   "medium": "FK Canada Fake", "long": "Fakey Fake Financial Canada" },
+  "00004": {"short": "FK",   "medium": "FK Canada Fake",  "long": "Fakey Fake Financial Canada" },
   "00005": {"short": "CIBC", "medium": "CIBC",            "long": "Canadian Imperial Bank of Commerce" },
   "00015": {"short": "RBC",  "medium": "RBC RoyalBank",   "long": "Royal Bank of Canada" },
   "00024": {"short": "PC",   "medium": "PC Financial",    "long": "President'"'"'s Choice Financial" }
 }
 '
-# NAMING CONVENTION for variables: leading _ indicates the string is a fragment of jq code.
+
+
+
+# Noe on the NAMING CONVENTION for variables: leading _ indicates the string is a fragment of jq code.
+
+
 
 # The variables that follow define the output format.
 
@@ -113,13 +123,13 @@ _default_info_string='.BNL + ", account " + .ACCTID + ", from " + .DSTART + " to
 _default_range_string='.DSTART + " to " + .DEND'
 
 
-# default options, in the future will be adjustable in command-line options
+
+# default options, can be modified by command-line options
 WRITE_TO_FILE=false
 NAME_LIKE_OFX=false
 FORCE_OVERWRITE=false
 RENAME_OFX=false
 HEADERS=false
-new_filename=
 
 # error exit codes
 declare -Air ERR=(
