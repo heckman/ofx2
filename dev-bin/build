@@ -3,6 +3,10 @@
 # builds compiled binaries
 
 root="$(git rev-parse --show-toplevel)"
+[[ "${root##*/}" == 'ofx' ]] || {
+	echo "FAIL: should be run within ofx repository."
+	exit 1
+}
 bin="$root/bin"
 
 build_ofx2xml(){

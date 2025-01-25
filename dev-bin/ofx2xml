@@ -6,6 +6,10 @@
 # when the binary has been built it should shadow this script
 
 root="$(git rev-parse --show-toplevel)"
+[[ "${root##*/}" == 'ofx' ]] || {
+	echo "FAIL: should be run within ofx repository."
+	exit 1
+}
 
 run_ofx2xml(){
 	cd "$root/src/ofx2xml" || return 1

@@ -3,6 +3,10 @@
 # removes compiled binaries
 
 root="$(git rev-parse --show-toplevel)"
+[[ "${root##*/}" == 'ofx' ]] || {
+	echo "FAIL: should be run within ofx repository."
+	exit 1
+}
 bin="$root/bin"
 
 clean_ofx2xml(){
