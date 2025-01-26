@@ -8,6 +8,8 @@
 # parse ofx files
 # and write transactions to csv/tsv files
 
+set -x
+
 requirements=( ofx2xml jq xq )
 
 usage(){ echo '
@@ -162,7 +164,9 @@ main(){
 	esac
 	shift
 	parse_options "$@" || shift $?
+	echo "$@" >&2
 	for ofx in "$@"; do
+		echo "Processing: $ofx" >&2
 		[[ -f "$ofx" ]] || die "File not found: $ofx" ${ERR[BAD_FILE]}
 		[[ -r "$ofx" ]] || die "Can't read file: $ofx" ${ERR[BAD_FILE]}
 		case "$cmd" in
@@ -183,11 +187,11 @@ main(){
 }
 
 parse_options(){
-	[[ "${1:--help}" == '--help' ]] && { usage && exit 0; }
+	if [[ "${1:--help}" == '--help' ]]; then usage; exit 0; fi
 	while getopts ":hwofrH" opt
 	do
 		case "$opt" in
-		h) usage && exit 0;;
+		h) usage; exit 0;;
 		w) WRITE_TO_FILE=true;;
 		o) WRITE_TO_FILE=true; NAME_LIKE_OFX=true;;
 		f) FORCE_OVERWRITE=true;;
@@ -225,9 +229,12 @@ check_requirements(){
 rename(){
 	local new_filename="$1.ofx"
 	if [[ -e "$new_filename" ]] && ! $FORCE_OVERWRITE
-	then die "File already exists: $new_filename" ${ERR[FILE_EXISTS]}
+	then
+		# die "File already exists: $new_filename" ${ERR[FILE_EXISTS]}
+		echo "File '$new_filename' already exists, skipping." >&2
+	else
+		mv "$ofx" "$new_filename"
 	fi
-	mv "$ofx" "$new_filename"
 }
 
 # shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
@@ -247,15 +254,15 @@ tabular(){ local _table_format="${1}";
 			then die "Error: $filename already exists." ${ERR[FILE_EXISTS]}
 			else
 				{
-					$HEADERS && headers "${_table_format}"
+					if $HEADERS; then headers "${_table_format}"; fi
 					cat -
 				} > "$filename"
 			fi
 		else
-			$HEADERS && headers "${_table_format}"
+			if $HEADERS; then headers "${_table_format}"; fi
 			cat -
 		fi
-		$RENAME_OFX && rename "$info_string"
+		if $RENAME_OFX; then rename "$info_string"; fi
 	}
 }
 
