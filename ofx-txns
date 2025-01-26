@@ -8,6 +8,8 @@
 # parse ofx files
 # and write transactions to csv/tsv files
 
+requirements=( ofx2xml jq xq )
+
 usage(){ echo '
 Usage: ofx-txns <command> <ofx_file> [<another_ofx_file> ...]
 
@@ -39,6 +41,7 @@ More commands, without options:
    rename    rename ofx file
 '
 }
+
 
 # Add an object for each the financial institutions you use.
 # They are indexed by their INTU.BID value.
@@ -133,9 +136,13 @@ HEADERS=false
 declare -Air ERR=(
 	[BAD_OPT]=2 # invalid command-line option
 	[NO_ARG]=3  # command-line option missing required argument
+	[NO_CMD]=4  # no command specified
+	[BAD_CMD]=5 # invalid command specified
 	[PANIC]=8 # generic internal error; this should never happen
-	[GETOPTS_FAIL]=9 #
+	[INTERNAL_ERROR]=9 # these should not happen
 	[FILE_EXISTS]=12 # file already exists and not overwriting
+	[BAD_FILE]=13 # file doesn't exist or is not readable
+	[MISSING_REQUIREMENT]=14
 )
 
 set -euo pipefail
@@ -143,13 +150,21 @@ set -euo pipefail
 # this is a global variable containing the path to the current OFX file
 declare ofx
 
+
 main(){
+	check_requirements
 	parse_options "$@" || shift $?
-	local cmd="${1:-}"; shift
+	local cmd
+	case "${1:-}" in
+		xml|json|csv|tsv|info|range|bank|bnk|baank|account|rename) cmd="$1";;
+		"") die "No command specified. Use -h for help." ${ERR[NO_CMD]};;
+		*) die "Unknown command '$1'. Use -h for help." ${ERR[BAD_CMD]};;
+	esac
+	shift
 	parse_options "$@" || shift $?
 	for ofx in "$@"; do
-		[[ -f "$ofx" ]] || die "File not found: $ofx" ${ERR[NO_ARG]}
-		[[ -r "$ofx" ]] || die "Can't read file: $ofx" ${ERR[NO_ARG]}
+		[[ -f "$ofx" ]] || die "File not found: $ofx" ${ERR[BAD_FILE]}
+		[[ -r "$ofx" ]] || die "Can't read file: $ofx" ${ERR[BAD_FILE]}
 		case "$cmd" in
 		xml) xml;;
 		json) xml | xq -j | cat;;
@@ -162,18 +177,11 @@ main(){
 		baank) info '.BNL';;
 		account) info '.ACCTID';;
 		rename) rename "$(info "$_filename_format")";;
-		*) die "Unknown command '$cmd'. Use -h for help." ${ERR[BAD_OPT]};;
+		*) die "Unconfigured commmand: '$cmd'." ${ERR[INTERNAL_ERROR]};;
 		esac
 	done
 }
-		# shellcheck disable=SC2015  # using with simple assigment
-rename(){
-	local new_filename="$1.ofx"
-	if [[ -e "$new_filename" ]] && ! $FORCE_OVERWRITE
-	then die "File already exists: $new_filename" ${ERR[FILE_EXISTS]}
-	fi
-	mv "$ofx" "$new_filename"
-}
+
 parse_options(){
 	[[ "${1:--help}" == '--help' ]] && { usage && exit 0; }
 	while getopts ":hwofrH" opt
@@ -187,7 +195,7 @@ parse_options(){
 		H) HEADERS=true;;
 		:) die "Option -$OPTARG requires an argument" ${ERR[NO_ARG]};;
 		\?) die "Invalid option: -$OPTARG" ${ERR[BAD_OPT]};;
-		*) die_hard "Unhandled option: $opt" ${ERR[GETOPTS_FAIL]};;
+		*) die_hard "Unhandled option: '$opt'." ${ERR[INTERNAL_ERROR]};;
 		esac
 	done
 	return $(( OPTIND - 1 ))
@@ -203,6 +211,25 @@ die_hard(){ declare -i message=$1 exit_code=$2
 		"Internal error on line $( caller | sed 's/ / of /') \
 		$message" $exit_code
 }
+
+check_requirements(){
+	local required
+	for required in "${requirements[@]}"
+	do command -v "$required" >/dev/null ||
+		die \
+			"Missing required command: $required" \
+			${ERR[MISSING_REQUIREMENT]}
+	done
+}
+
+rename(){
+	local new_filename="$1.ofx"
+	if [[ -e "$new_filename" ]] && ! $FORCE_OVERWRITE
+	then die "File already exists: $new_filename" ${ERR[FILE_EXISTS]}
+	fi
+	mv "$ofx" "$new_filename"
+}
+
 # shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
 # capture a string to be used as the filename in case we need it
 tabular(){ local _table_format="${1}";
