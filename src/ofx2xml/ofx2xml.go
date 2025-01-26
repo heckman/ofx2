@@ -1,5 +1,8 @@
 package main
 
+// ofx2xml
+// version 0.1, 2025-01-25
+
 // remarshals ofx file to at least version 2.0, which is XML
 
 import (
@@ -48,7 +51,7 @@ func printOFXFileAsXML(filename string) error {
 func main() {
 
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "Usage: ofx2xml <ofx_file>")
+		fmt.Fprintln(os.Stderr, "== ofx2xml v0.1 <https://git.heckman.ca/ofx-txns> ==\nUsage: ofx2xml <ofx_file>")
 		os.Exit(1)
 	}
 
