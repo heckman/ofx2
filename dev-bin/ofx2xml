@@ -16,7 +16,30 @@ run_ofx2xml(){
 	go run ofx2xml.go "$1"
 }
 
-run_ofx2xml "$(realpath "$1")" || {
+
+# if the compiled binary exists, run it
+[[ -x "$root/bin/ofx2xml" ]] && exec "$root/bin/ofx2xml" "$@"
+
+
+# get absolute path to ofx file, because we'll be changing directories
+if [[ -e "$1" ]]
+then
+	ofx="$(realpath "$1")"
+else
+	ofx="$1"
+fi
+
+
+# need to run go program from its source directory
+cd "$root/src/ofx2xml" || {
 	echo "FAIL: could not run ofx2xml." >&2
 	exit 1
 }
+
+# run the program directly from source
+if [[ -n "$ofx" ]]
+then
+	go run ofx2xml.go "$ofx"
+else
+	go run ofx2xml.go
+fi
