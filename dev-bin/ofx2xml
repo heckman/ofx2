@@ -6,7 +6,7 @@
 # when the binary has been built it should shadow this script
 
 root="$(git rev-parse --show-toplevel)"
-[[ "${root##*/}" == 'ofx' ]] || {
+[[ "${root##*/}" == 'ofx-txns' ]] || {
 	echo "FAIL: should be run within ofx repository."
 	exit 1
 }

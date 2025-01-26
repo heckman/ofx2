@@ -1,4 +1,4 @@
-# ofx
+# ofx-txns
 
 This is a bash script for extracting data from OFX files.
 
@@ -15,8 +15,21 @@ Furthermore, the utility interprets
 
 ## Usage
 
-For usage information, run `ofx --help`,
-or examine [the source code](./ofx),
+To perform it's primary function,
+to extract transactions from an OFX file
+and write them to a csv file,
+run `ofx-txns csv -w`.
+With this invocation the csv file created
+will be named as a function of
+the financial instutution,
+the account number,
+and the date range of the transactions.
+
+The script includes other options,
+and a few other functions.
+For complete usage information,
+run `ofx-txns --help`,
+or examine [the source code](./ofx-txns),
 where the usage appears near the top.
 
 ## Installation
@@ -24,9 +37,9 @@ where the usage appears near the top.
 I wrote this for _MacOS_,
 but it should work on _Unix_-like systems.
 
-The script _ofx_ is in the root of this repository.
+The script _ofx-txns_ is in the root of this repository.
 There is a second script _ofx2csv_
-which calls _ofx_ with some preset options.
+which calls _ofx-txns_ with some preset options.
 
 In addition to the included _ofx2xml_ utility,
 the script requires both _jq_ and _xq_ to be installed.
@@ -41,7 +54,7 @@ should be put on the system's path.
 Some configuration is required to customize the script
 for use with OFX files from your financial institutions.
 
-In the _ofx_ script, immediately following the usage information,
+In the _ofx-txns_ script, immediately following the usage information,
 a varable `_fidir_` is set containing the definition of a json-object
 which maps `INTU.BID` values to names of financial institutions.
 You will need to add your own entries to this object.
@@ -66,7 +79,7 @@ The problem with this approach is that there is
 no consistency between the format of the CSV files
 from the various financial institutions.
 
-The _ofx_ script attempts to address this problem.
+The _ofx-txns_ script attempts to address this problem.
 
 The banks that I use consistenly
 (mostly) support the OFX specification.

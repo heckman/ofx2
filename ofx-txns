@@ -2,14 +2,14 @@
 # Copyright (c) 2025 Erik Ben Heckman
 # SPDX-License-Identifier: MIT
 #
-# ofx
+# ofx-txns
 # v0.4
 
 # parse ofx files
 # and write transactions to csv/tsv files
 
 usage(){ echo '
-Usage: ofx <command> <ofx_file> [<another_ofx_file> ...]
+Usage: ofx-txns <command> <ofx_file> [<another_ofx_file> ...]
 
 Commands with options:
 

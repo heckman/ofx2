@@ -3,7 +3,7 @@
 # removes compiled binaries
 
 root="$(git rev-parse --show-toplevel)"
-[[ "${root##*/}" == 'ofx' ]] || {
+[[ "${root##*/}" == 'ofx-txns' ]] || {
 	echo "FAIL: should be run within ofx repository."
 	exit 1
 }
