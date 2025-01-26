@@ -8,8 +8,6 @@
 # parse ofx files
 # and write transactions to csv/tsv files
 
-set -x
-
 requirements=( ofx2xml jq xq )
 
 usage(){ echo '
@@ -164,9 +162,7 @@ main(){
 	esac
 	shift
 	parse_options "$@" || shift $?
-	echo "$@" >&2
 	for ofx in "$@"; do
-		echo "Processing: $ofx" >&2
 		[[ -f "$ofx" ]] || die "File not found: $ofx" ${ERR[BAD_FILE]}
 		[[ -r "$ofx" ]] || die "Can't read file: $ofx" ${ERR[BAD_FILE]}
 		case "$cmd" in
