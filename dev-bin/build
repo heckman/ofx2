@@ -8,6 +8,7 @@ root="$(git rev-parse --show-toplevel)"
 	exit 1
 }
 bin="$root/bin"
+mkdir -p "$bin"
 
 build_ofx2xml(){
 	cd "$root/src/ofx2xml" || return 1
