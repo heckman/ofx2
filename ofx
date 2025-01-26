@@ -37,8 +37,6 @@ More commands, without options:
    baank     print longer name of bank
    account   print account number
    rename    rename ofx file
-   convert   shortcut for csv command with -w, -f and -r options
-
 '
 }
 
@@ -164,12 +162,6 @@ main(){
 		baank) info '.BNL';;
 		account) info '.ACCTID';;
 		rename) rename "$(info "$_filename_format")";;
-		convert)
-			WRITE_TO_FILE=true
-			FORCE_OVERWRITE=true
-			RENAME_OFX=true
-			tabular csv
-			;;
 		*) die "Unknown command '$cmd'. Use -h for help." ${ERR[BAD_OPT]};;
 		esac
 	done
