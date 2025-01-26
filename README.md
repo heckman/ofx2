@@ -66,8 +66,6 @@ add local directories to the environment's PATH.
 
 The `dev-bin` directory contains scripts to
 build and remove the compiled _ofx2xml_ binary.
-It also contains a script that calls _go_ to
-run the source-code of _ofx2xml_ directly.
 
 ## Rationale
 
