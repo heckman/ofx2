@@ -8,6 +8,7 @@
 # parse ofx files
 # and write transactions to csv/tsv files
 
+
 requirements=( ofx2xml jq xq )
 
 usage(){ echo '
@@ -223,18 +224,23 @@ check_requirements(){
 }
 
 rename(){
+	if [[ -z "${1:-}" ]]
+	then
+		echo "Unable to generate new filename for '$ofx'; skipping." >&2
+		return 1
+	fi
 	local new_filename="$1.ofx"
 	if [[ -e "$new_filename" ]] && ! $FORCE_OVERWRITE
 	then
-		# die "File already exists: $new_filename" ${ERR[FILE_EXISTS]}
-		echo "File '$new_filename' already exists, skipping." >&2
-	else
-		mv "$ofx" "$new_filename"
+		echo "Not renaming '$ofx': something named '$new_filename' already exists; skipping." >&2
+		return 1
 	fi
+	mv "$ofx" "$new_filename"
 }
 
 # shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
 # capture a string to be used as the filename in case we need it
+# TODO: refactor this function--it's a mess!
 tabular(){ local _table_format="${1}";
 	parse "$_filename_format" "$_default_transaction_fields | @${_table_format}" | {
 		read -r info_string
@@ -242,17 +248,25 @@ tabular(){ local _table_format="${1}";
 		then
 			if $NAME_LIKE_OFX
 			then
-				filename="$(basename -s.ofx "$ofx").${_table_format}"
+				filebasename="$(basename -s.ofx "$ofx")"
 			else
-				filename="${info_string}.${_table_format}"
+				filebasename="${info_string}"
 			fi
-			if [[ -e "$filename" ]] && ! $FORCE_OVERWRITE
-			then die "Error: $filename already exists." ${ERR[FILE_EXISTS]}
+			echo "filebasename='$filebasename'" >&2
+			if [[ -z "$filebasename" ]]
+			then
+				echo "Problem generating output filename for '$ofx'; skipping,." >&2
 			else
-				{
-					if $HEADERS; then headers "${_table_format}"; fi
-					cat -
-				} > "$filename"
+				filename="$filebasename.${_table_format}"
+				if [[ -e "$filename" ]] && ! $FORCE_OVERWRITE
+				then
+					echo "File '$filename' already exists; skipping." >&2
+				else
+					{
+						if $HEADERS; then headers "${_table_format}"; fi
+						cat -
+					} > "$filename"
+				fi
 			fi
 		else
 			if $HEADERS; then headers "${_table_format}"; fi
