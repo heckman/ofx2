@@ -183,7 +183,7 @@ rename(){
 	mv "$ofx" "$new_filename"
 }
 parse_options(){
-	[[ "$1" == '--help' ]] && { usage && exit 0; }
+	[[ "${1:--help}" == '--help' ]] && { usage && exit 0; }
 	while getopts ":hwofrH" opt
 	do
 		case "$opt" in
