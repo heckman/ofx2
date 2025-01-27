@@ -99,32 +99,41 @@ _description_deliminator='; '
 # '
 
 # these are used for the info command and when (re)naming files
-_filename_format='.BNS + "-" + .ACCTSFX + " -- " + (.DSTART | gsub("-(?<d>\\d\\d)$"; "\(.d)")) + " - " + (.DEND | gsub("-(?<d>\\d\\d)$"; "\(.d)"))'
+_filename_format='
+	.BNS + "-" + .ACCTSFX + " -- "
+	+ (.DSTART | gsub("-(?<d>\\d\\d)$"; "\(.d)"))
+	+ " - "
+	+ (.DEND | gsub("-(?<d>\\d\\d)$"; "\(.d)"))
+'
 
 # this jq array is used to define the headers for the transaction fields:
-_default_transaction_field_headers='[
-	"ACCOUNT",
-	"TRANSACTION ID",
-	"DATE POSTED",
-	"TYPE",
-	"DESCRIPTION",
-	"AMOUNT"
-]'
+_default_transaction_field_headers='
+	[
+		"ACCOUNT",
+		"TRANSACTION ID",
+		"DATE POSTED",
+		"TYPE",
+		"DESCRIPTION",
+		"AMOUNT"
+	]
+'
 
 # this jq array specifies fields to include for transactions:
-_default_transaction_fields='[
-	(.BNS + "-" + .ACCTSFX),
-	.FITID,
-	.DPOSTED,
-	.TRNTYPE,
-	.DESC,
-	.TRNAMT
-]'
+_default_transaction_fields='
+	[
+		(.BNS + "-" + .ACCTSFX),
+		.FITID,
+		.DPOSTED,
+		.TRNTYPE,
+		.DESC,
+		.TRNAMT
+	]
+'
 
-_default_info_string='.BNL + ", account " + .ACCTID + ", from " + .DSTART + " to " + .DEND + "."'
+_default_info_string='
+	.BNL + ", account " + .ACCTID + ", from " +
+	.DSTART + " to " + .DEND + "."'
 _default_range_string='.DSTART + " to " + .DEND'
-
-
 
 # default options, can be modified by command-line options
 WRITE_TO_FILE=false
@@ -292,74 +301,76 @@ headers(){ local _table_format="${1}";
 # then, on the subsequent lines, transaction info
 parse(){
 	local _info_format="${1:-\"\"}"
-	local _txn_format="${2:-\"\"}"
+	local _txns_format="${2:-\"\"}"
 	# shellcheck disable=SC2016 # the dollarsigns are jq variables
-	json | jq -r --argjson fidir "$_fidir" '
+	json | jq -r \
+		--argjson fidir "$_fidir" \
+		--arg desc_delim "$_description_deliminator" \
+	"
+	def txns_fmt: $_txns_format;
+	def info_fmt: $_info_format;
+	"'
+	def add_derived_bank_names($s): $s | . + {
+		BNS: $fidir[$s.INTBID].short,
+		BNM: $fidir[$s.INTBID].medium,
+		BNL: $fidir[$s.INTBID].long
+	};
+	def file_info: {
+		BANKID: ((.BANKACCTFROM.BANKID // "")+(.CCACCTFROM.BANKID // "")),
+		ACCTID: ((.BANKACCTFROM.ACCTID // "")+(.CCACCTFROM.ACCTID // "")),
+		DTSTART: (.BANKTRANLIST.DTSTART // ""),
+		DTEND: (.BANKTRANLIST.DTEND // "")
+	};
+	def add_derived_file_info($s): $s | . + {
+		ACCTN: ($s.ACCTID | gsub("[^A-Za-z0-9]"; "")),
+		ACCTSFX: ($s.ACCTID | gsub("[^A-Za-z0-9]"; "") | .[-4:]),
+		DSTART: ($s.DTSTART[0:4]+"-"+$s.DTSTART[4:6]+"-"+$s.DTSTART[6:8]),
+		DEND: ($s.DTEND[0:4]+"-"+$s.DTEND[4:6]+"-"+$s.DTEND[6:8])
+	};
+	def derived_transaction_fields: {
+		DPOSTED: (
+			.DTPOSTED[0:4]+"-"+.DTPOSTED[4:6]+"-"+.DTPOSTED[6:8]
+		),
+		DESC: (
+			if ((.NAME//"") != "" and (.MEMO//"") != "")
+			then (.NAME//"") + $desc_delim + (.MEMO//"")
+			else (.NAME//"") + (.MEMO//"")
+			end
+		),
+		# in transaction amounts, add zeros for cents if missing
+		TRNAMT: (
+			.TRNAMT
+			| gsub("^(?<a>-?\\d+)$";"\(.a).00")
+			| gsub("^(?<a>-?\\d+\\.\\d)$";"\(.a)0")
+		)
+	};
+	def get_intbid: { INTBID: (.SIGNONMSGSRSV1.SONRS.FI.FID // "") };
+	def wrap: if type == "array" then . else [.] end;
+	def first: if type == "array" then .[0] else . end;
 	.OFX
-	| ({ INTBID: (.SIGNONMSGSRSV1.SONRS.FI.FID // "") }) as $props
-	| ( $props + '"$_derived_bank_names"' )	as $props
+	| ( add_derived_bank_names(get_intbid) ) as $props
 	| if has("BANKMSGSRSV1") then .BANKMSGSRSV1.STMTTRNRS
-		| if type == "array" then .[0] else . end
+		| first
 		| .STMTRS
 	elif has("CREDITCARDMSGSRSV1") then .CREDITCARDMSGSRSV1.CCSTMTTRNRS
-		| if type == "array" then .[0] else . end
+		| first
 		| .CCSTMTRS
 	else
 		error("Unknown OFX type")
 	end
-	| ( $props + '"$_file_info"' ) as $props
-	| ( $props + '"$_derived_file_info"' ) as $props
+	| ( add_derived_file_info($props + file_info) ) as $props
 	| .BANKTRANLIST
 	| (
-		( . + $props | '"$_info_format"' ),
+		( . + $props | info_fmt ),
 		(
-			.STMTTRN | if type == "array" then . else [.] end
+			.STMTTRN | wrap
 			| .[]
-			| . + '"$_derived_transaction_fields"'
 			| . + $props
-			| '"$_txn_format"'
+			| . + derived_transaction_fields
+			| txns_fmt
 		)
 	)
 	'
 }
-
-# shellcheck disable=SC2016 # the dollarsigns are jq variables
-_derived_bank_names='{
-	BNS: $fidir[$props.INTBID].short,
-	BNM: $fidir[$props.INTBID].medium,
-	BNL: $fidir[$props.INTBID].long
-}'
-_file_info='{
-	BANKID: ((.BANKACCTFROM.BANKID // "")+(.CCACCTFROM.BANKID // "")),
-	ACCTID: ((.BANKACCTFROM.ACCTID // "")+(.CCACCTFROM.ACCTID // "")),
-	DTSTART: (.BANKTRANLIST.DTSTART // ""),
-	DTEND: (.BANKTRANLIST.DTEND // "")
-}'
-# shellcheck disable=SC2016 # the dollarsigns are jq variables
-_derived_file_info='{
-	ACCTN: ($props.ACCTID | gsub("[^A-Za-z0-9]"; "")),
-	ACCTSFX: ($props.ACCTID | gsub("[^A-Za-z0-9]"; "") | .[-4:]),
-	DSTART: ($props.DTSTART[0:4]+"-"+$props.DTSTART[4:6]+"-"+$props.DTSTART[6:8]),
-	DEND: ($props.DTEND[0:4]+"-"+$props.DTEND[4:6]+"-"+$props.DTEND[6:8])
-}'
-_derived_transaction_fields='{
-	DPOSTED: (
-		.DTPOSTED[0:4]+"-"+.DTPOSTED[4:6]+"-"+.DTPOSTED[6:8]
-	),
-	DESC: (
-		if ((.NAME//"") != "" and (.MEMO//"") != "")
-		then (.NAME//"") + "'"$_description_deliminator"'" + (.MEMO//"")
-		else (.NAME//"") + (.MEMO//"")
-		end
-	),
-	# in transaction amounts, add zeros for cents if missing
-	TRNAMT: (
-		.TRNAMT
-		| gsub("^(?<a>-?\\d+)$";"\(.a).00")
-		| gsub("^(?<a>-?\\d+\\.\\d)$";"\(.a)0")
-	)
-}'
-
-
 
 main "$@"
