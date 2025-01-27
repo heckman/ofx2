@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+#
+# installs compiled binaries & scripts
+
+destination="$HOME/bin"
+
+root="$(git rev-parse --show-toplevel)"
+[[ "${root##*/}" == 'ofx-txns' ]] || {
+	echo "FAIL: should be run within ofx repository."
+	exit 1
+}
+bin="$root/bin"
+
+[[ -d "$destination" ]] || {
+	echo "FAIL: destination directory '$destination' does not exist.">&2
+	exit 1
+}
+
+[[ -e "$bin/ofx2xml" ]] || {
+	"$root/dev-bin/build" || {
+		echo "FAIL: failed to build ofx2xml." >&2
+		exit 1
+
+	}
+}
+
+cp -i "$root/ofx-txns" "$root/ofx2csv" "$bin/ofx2xml" "$destination" &&
+{
+	echo "OK: installed ofx-txns, ofx2csv, and ofx2xml to '$destination'."
+}
+
