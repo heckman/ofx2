@@ -249,38 +249,36 @@ rename(){
 
 # shellcheck disable=SC2120  # don't be alarmed if the default fields are always used!
 # capture a string to be used as the filename in case we need it
-# TODO: refactor this function--it's a mess!
 tabular(){ local _table_format="${1}";
 	parse "$_filename_format" "$_default_transaction_fields | @${_table_format}" | {
-		read -r info_string
-		if $WRITE_TO_FILE
-		then
-			if $NAME_LIKE_OFX
-			then
-				filebasename="$(basename -s.ofx "$ofx")"
-			else
-				filebasename="${info_string}"
-			fi
-			if [[ -z "$filebasename" ]]
-			then
-				echo "Problem generating output filename for '$ofx'; skipping,." >&2
-			else
-				filename="$filebasename.${_table_format}"
-				if [[ -e "$filename" ]] && ! $FORCE_OVERWRITE
-				then
-					echo "File '$filename' already exists; skipping." >&2
-				else
-					{
-						if $HEADERS; then headers "${_table_format}"; fi
-						cat -
-					} > "$filename"
-				fi
-			fi
-		else
+		read -r basefilename
+		{
 			if $HEADERS; then headers "${_table_format}"; fi
 			cat -
-		fi
-		if $RENAME_OFX; then rename "$info_string"; fi
+		} | {
+			if $WRITE_TO_FILE
+			then
+				if $NAME_LIKE_OFX
+				then
+					basefilename="$(basename -s.ofx "$ofx")"
+				fi
+				if [[ -z "$basefilename" ]]
+				then
+					echo "Problem generating output filename for '$ofx'; skipping,." >&2
+					return 1
+				fi
+				filename="$basefilename.${_table_format}"
+				if [[ -e "$filename" ]] && ! $FORCE_OVERWRITE
+				then
+					echo "File '$filename' already exists; skipping '$ofx'." >&2
+					return 1
+				fi
+				cat - > "$filename"
+			else
+				cat -
+			fi
+		}
+		if $RENAME_OFX; then rename "$basefilename"; fi
 	}
 }
 
