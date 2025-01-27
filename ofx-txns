@@ -261,7 +261,6 @@ tabular(){ local _table_format="${1}";
 			else
 				filebasename="${info_string}"
 			fi
-			echo "filebasename='$filebasename'" >&2
 			if [[ -z "$filebasename" ]]
 			then
 				echo "Problem generating output filename for '$ofx'; skipping,." >&2
@@ -300,8 +299,8 @@ headers(){ local _table_format="${1}";
 # derives json then outputs, on the first line, summary info,
 # then, on the subsequent lines, transaction info
 parse(){
-	local _info_format="${1:-\"\"}"
-	local _txns_format="${2:-\"\"}"
+	local _info_format="${1:-.}"
+	local _txns_format="${2:-.}"
 	# shellcheck disable=SC2016 # the dollarsigns are jq variables
 	json | jq -r \
 		--argjson fidir "$_fidir" \
@@ -347,14 +346,14 @@ parse(){
 	def get_intbid: { INTBID: (.SIGNONMSGSRSV1.SONRS.FI.FID // "") };
 	def wrap: if type == "array" then . else [.] end;
 	def first: if type == "array" then .[0] else . end;
+
 	.OFX
 	| ( add_derived_bank_names(get_intbid) ) as $props
-	| if has("BANKMSGSRSV1") then .BANKMSGSRSV1.STMTTRNRS
-		| first
-		| .STMTRS
-	elif has("CREDITCARDMSGSRSV1") then .CREDITCARDMSGSRSV1.CCSTMTTRNRS
-		| first
-		| .CCSTMTRS
+	|
+	if has("BANKMSGSRSV1") then
+		.BANKMSGSRSV1.STMTTRNRS | first | .STMTRS
+	elif has("CREDITCARDMSGSRSV1") then
+		.CREDITCARDMSGSRSV1.CCSTMTTRNRS | first | .CCSTMTRS
 	else
 		error("Unknown OFX type")
 	end
