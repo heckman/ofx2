@@ -47,6 +47,10 @@ The _ofx2xml_ utility is written in _go_.
 I needs to be compiled, and the resulting binary
 should be put on the system's path.
 
+The script `dev-bin/install`
+copies both scripts and the _ofx2xml_ binary
+to `$HOME/bin`.
+
 ## Configuration
 
 Some configuration is required to customize the script
@@ -64,12 +68,14 @@ can be found [from intuit.com](https://ofx-prod-filist.intuit.com/qm2400/data/fi
 This project makes use of the _direnv_ utility
 to add local directories to the environment's PATH.
 It is usefull for putting _ofx2xml_ on the path
-before it has been installed.
+before it has been installed,
+but you can get along without it.
 
-The `dev-bin` directory contains scripts to
-build and remove the compiled _ofx2xml_ binary.
+The `dev-bin` directory contains
+scripts to perform common tasks.
+The _direnv_ utility will also add it to the PATH.
 
-## Rationale
+## Motivation
 
 To track my finances,
 I used to download my transactions as CSV files
