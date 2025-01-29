@@ -99,41 +99,90 @@ _description_deliminator='; '
 # '
 
 # these are used for the info command and when (re)naming files
+#
 _filename_format='
-	.BNS + "-" + .ACCTSFX + " -- "
-	+ (.DSTART | gsub("-(?<d>\\d\\d)$"; "\(.d)"))
-	+ " - "
-	+ (.DEND | gsub("-(?<d>\\d\\d)$"; "\(.d)"))
+	.BNS + "-" + .ACCTSFX + " transactions from " + .DSTART + " to " + .DEND
 '
+# more compact:
+# _filename_format='
+# .BNS + "-" + .ACCTSFX + " -- "
+# + (.DSTART | gsub("-(?<d>\\d\\d)$"; "\(.d)"))
+# + " - "
+# + (.DEND | gsub("-(?<d>\\d\\d)$"; "\(.d)"))
+# '
 
-# this jq array is used to define the headers for the transaction fields:
-_default_transaction_field_headers='
-	[
-		"ACCOUNT",
-		"TRANSACTION ID",
-		"DATE POSTED",
-		"TYPE",
-		"DESCRIPTION",
-		"AMOUNT"
-	]
-'
-
-# this jq array specifies fields to include for transactions:
-_default_transaction_fields='
-	[
-		(.BNS + "-" + .ACCTSFX),
-		.FITID,
-		.DPOSTED,
-		.TRNTYPE,
-		.DESC,
-		.TRNAMT
-	]
-'
-
+# some other generated strings
 _default_info_string='
 	.BNL + ", account " + .ACCTID + ", from " +
 	.DSTART + " to " + .DEND + "."'
 _default_range_string='.DSTART + " to " + .DEND'
+
+
+# two jq arrays specifiy fields to include for transactions, and their headers
+#
+### with separate fields for withdrawals and deposits
+# _default_transaction_field_headers='
+# 	[
+# 		"ACCOUNT",
+# 		"DATE POSTED",
+# 		"DESCRIPTION",
+# 		"WITHDRAWALS",
+# 		"DEPOSITS"
+# 	]
+# '
+# _default_transaction_fields='
+# 	[
+# 		(.BNS + "-" + .ACCTSFX),
+# 		.DPOSTED,
+# 		.DESC,
+# 		(if .TRNAMT[0:1]=="-" then .TRNAMT[1:] else "" end),
+# 		(if .TRNAMT[0:1]=="-" then "" else .TRNAMT end)
+# 	]
+# '
+### with a single field for withdrawals and deposits, negative numbers are withdrawals
+### also includes fields for the transaction ID and type of transaction
+# _default_transaction_field_headers='
+# 	[
+# 		"ACCOUNT",
+# 		"TRANSACTION ID",
+# 		"DATE POSTED",
+# 		"TYPE",
+# 		"DESCRIPTION",
+# 		"AMOUNT"
+# 	]
+# '
+# _default_transaction_fields='
+# 	[
+# 		(.BNS + "-" + .ACCTSFX),
+# 		.FITID,
+# 		.DPOSTED,
+# 		.TRNTYPE,
+# 		.DESC,
+# 		.TRNAMT
+# 	]
+# '
+#### a simpler set of fields
+_default_transaction_field_headers='
+	[
+		"ACCOUNT",
+		"DATE POSTED",
+		"NAME",
+		"MEMO",
+		"AMOUNT"
+	]
+'
+_default_transaction_fields='
+	[
+		(.BNS + "-" + .ACCTSFX),
+		.DPOSTED,
+		.NAME,
+		.MEMO,
+		.TRNAMT
+	]
+'
+
+
+
 
 # default options, can be modified by command-line options
 WRITE_TO_FILE=false
