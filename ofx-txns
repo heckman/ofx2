@@ -39,6 +39,7 @@ These two commands output the transactions from the ofx files:
    -m         include an additional column with a hash of the other fields
    -M <jq-S>  like -m, but also specify a custom header for the hash column
    -w         write output to file whose name is generated from contents of file
+   -W <jq-S>  write output to file whose name is specified by js-parsed value.
    -o         write output to file whose name is based of the ofx filename
    -f         force overwrite of existing files when writing to file
    -h         display this help and exit
@@ -364,7 +365,7 @@ main(){
 
 parse_options(){
 	if [[ "${1:--help}" == '--help' ]]; then usage; exit 0; fi
-	while getopts ":hwofC:bB:mM:rR:tT:F:" opt
+	while getopts ":hofC:wW:bB:mM:rR:tT:F:" opt
 	do
 		case "$opt" in
 		h) usage; exit 0;;
@@ -379,6 +380,7 @@ parse_options(){
 		m) HASH=true;;
 		M) HASH=true; _hash_header="$OPTARG";;
 		w) WRITE_TO_FILE=true;;
+		W) WRITE_TO_FILE=true; _filename_format="$OPTARG";;
 		o) WRITE_TO_FILE=true; NAME_LIKE_OFX=true;;
 		f) FORCE_OVERWRITE=true;;
 		:) die "Option -$OPTARG requires an argument" ${ERR[NO_ARG]};;
