@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # ofx-txns
-# v0.4
+# v0.5
 
 # parse ofx files
 # and write transactions to csv/tsv files
@@ -13,35 +13,64 @@ set -eu #o pipefail
 
 requirements=( ofx2xml jq xq )
 
+# shellcheck disable=SC2016
 usage(){ echo '
-Usage: ofx-txns <command> <ofx_file> [<another_ofx_file> ...]
+Usage: ofx-txns csv|tsv [options] <ofx_file> [<another_ofx_file> ...]
+       ofx-txns info|rename [-F <format>] <ofx_file> [<another_ofx_file> ...]
+       ofx-txns xml|json <ofx_file> [<another_ofx_file> ...]
+       ofx-txns range|bank|bnk|baank|account <ofx_file> [<another_ofx_file> ...]
 
-Commands with options:
 
-   csv       print transactions to stdout as CSV
-   tsv       print transactions to stdout as TSV
+These two commands output the transactions from the ofx files:
 
-   The above commands can be followed the following options.
-   The filename is generated from the contents of the file.
+   csv    print transactions to stdout as CSV
+   tsv    print transactions to stdout as TSV
 
-   -w        write to file with auto-generated name rather than to stdout
-   -o        write to file with same basename as ofx file
-   -f        replace any existing files when writing or renaming files
-   -r        rename ofx file to auto-generated name
-   -H        include a header row
+   They can take the following options:
 
-More commands, without options:
-(Options provided for these commands will be silently ignored)
+   -F <jq-S>  custom format of basename forrenaming (no extension)
+   -C <jq-A>  specify transaction fields to include with jq-parsed array
+   -t         include a default header row
+   -T <jq-A>  inlcude headers as specified by jq-parsed array
+   -r         rename original ofx file based on file information
+   -R <jq-S>  use jq-parsed value to rename original ofx
+   -b         print an additional "transaction" declaring the closing balance
+   -B <jq-A>  append additional "transaction" as specified by jq-parsed array
+   -m         include an additional column with a hash of the other fields
+   -M <jq-S>  like -m, but also specify a custom header for the hash column
+   -w         write output to file whose name is generated from contents of file
+   -o         write output to file whose name is based of the ofx filename
+   -f         force overwrite of existing files when writing to file
+   -h         display this help and exit
 
-   xml       print all ofx data as xml (ofx v2)
-   json      print all ofx data as json
-   info      print bank, account, and date-range
+   <jq-S> is a jq expression that should evaluate to a string
+   <jq-A> is a jq expression that should evaluate to an array
+
+   File and transaction properties are available to the jq expressions.
+   The variables available are described in comments in the source code
+   of this script.
+
+
+These two commands can take a -F option to specify the output format:
+
+   info    print summary information generated from the ofx file
+   rename  rename the ofx file with name generated from ofx content
+
+
+These commands are shorcuts for particular information from the ofx file:
+
+   bank      print name of bank (same as `info -F ".BNM"`)
+   bnk       print shorter name of bank (same as `info -F ".BNS"`)
+   baank     print longer name of bank (same as `info -F ".BNL"`)
+   account   print account number (same as `info -F ".ACCTID"`)
    range     print range of transaction dates
-   bank      print name of bank
-   bnk       print shorter name of bank
-   baank     print longer name of bank
-   account   print account number
-   rename    rename ofx file
+
+
+These two commands dump all the information from the ofx file:
+
+   xml     print all ofx data as xml (ofx v2)
+   json    print all ofx data as json
+
 '
 }
 
