@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Copyright (c) 2025 Erik Ben Heckman
+# SPDX-License-Identifier: MIT
+#
+# ofx2csv
+
+ofx2 csv -w "$@"
