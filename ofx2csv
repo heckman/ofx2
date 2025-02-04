@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-ofx-txns csv -w "$@"

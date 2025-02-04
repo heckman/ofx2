@@ -24,7 +24,7 @@ the account number,
 and the date range of the transactions.
 
 The script includes other options,
-and a few other tangentally-related functions.
+and a few other tangentally-related operations.
 For complete usage information,
 run `ofx-txns --help`,
 or examine [the source code](./ofx-txns),
