@@ -170,19 +170,26 @@ OFX file. The following properties are derived from the original
 DTSTART and DTEND tags:
 
    .DSTART     Start date of included transactions as YYYY-MM-DD
-   .DTSTART    Start date-time of included transactions without time zone or sub-seconds.
+   .DTSTART    Start date-time of included transactions
+               without time zone or sub-seconds.
    .TZSTART    Time Zone of start date-time of included transactions.
    .DEND       End date of included transactions as YYYY-MM-DD
-   .DTEND      End date-time of included transactions without time zone or sub-seconds.
+   .DTEND      End date-time of included transactions without
+               time zone or sub-seconds.
    .TZEND      Tome sone of end date-time of included transactions.
+
+Warning: an OFX file I recently download from a bank, included transactions
+outside of the range defined by its DTSTART and DTEND tags.
 
 These are date and time information for the ending balances of the account:
 
    .LEDGERD    The date of the account balance as YYYY-MM-DD
-   .LEDGERDT   The date-time of the account balance without time zone or sub-seconds.
+   .LEDGERDT   The date-time of the account balance
+               without time zone or sub-seconds.
    .LEDGERTZ   The time zone of the account balance.
    .AVAILD     The date of the available balance as YYYY-MM-DD
-   .AVAILDT    The date-time of the available balance without time zone or sub-seconds.
+   .AVAILDT    The date-time of the available balance
+               without time zone or sub-seconds.
    .AVAILTZ    The time zone of the available balance.
 
 In addition to the above properties, the following fields are usually available
@@ -193,6 +200,13 @@ for transactions:
    .TRNAMT      Positive for credits, negative for debits, no dollar sign.
    .NAME        The first line of the description.
    .MEMO        The second line of the description.
+
+The following properties are derived from .TRNAMT
+
+   .DEPOST      If .TRNAMT < 0, an empty string, otherwise .TRNAMT
+   .WITHDRAWAL  If .TRNAMT < 0, then the absolute value of .TRNAMT,
+                otherwise an emptt string. If you want this to be negative
+                you'll need to add a minus sign yourself.
 
 A description property is derived from .NAME and .MEMO
 
@@ -206,8 +220,21 @@ These are derived from the OFX's native DTPOSTED tag
    .DPOSTED     Date in YYYY-MM-DD format, derived from DTPOSTED.
    .TZPOSTED    Time Zone of DTPOSTED.
 
+These functions are also available; pipe values through them:
+
+   fmtd(format)   takes a date in the form YYYY-MM-DD and outputs
+                  the date in the specified format. For example,
+                  \"2000-12-31\" | fmtd(\"%m/%d/%y\") produces \"12/31/00\".
+                  Use %Y for 4-digit years. See strftime(3) for more details.
+                  Does not work with time or date-time values.
+
 "
 }
+
+# functions available from the command line are defined here:
+jq_functions='
+def fmtd($format): ( . + "T00:00:00Z") | fromdate | strftime($format) ;
+'
 
 # the following default formats can be redefined with command-line options
 
@@ -556,11 +583,11 @@ parse_args(){
 }
 
 print_info(){
-	jq -r "$1" <<<"$json" || die BAD_JQ_FRAG "$1"
+	jq -r "$jq_functions $1" <<<"$json" || die BAD_JQ_FRAG "$1"
 }
 
 print_rows(){
-	jq -r "$1 | @${TABLE_TYPE}" <<<"$json" || die BAD_JQ_ARRY "$1"
+	jq -r "$jq_functions $1 | @${TABLE_TYPE}" <<<"$json" || die BAD_JQ_ARRY "$1"
 }
 
 transactions()( # this needs to be a subshell because we're redirecting stdout
@@ -752,7 +779,19 @@ def derived_transaction_fields: {
 	# in transaction amounts, add zeros for cents if missing
 	TRNAMT: (
 		.TRNAMT | add_missing_cents
-	)
+	),
+	DEPOSIT: (
+		if .TRNAMT[0:1]=="-"
+		then ""
+		else .TRNAMT | add_missing_cents
+		end
+		),
+	WITHDRAWAL: (
+		if .TRNAMT[0:1]=="-"
+		then .TRNAMT[1:] | add_missing_cents
+		else ""
+		end
+		)
 };
 def bank_info: {
 	FIFID: (.SIGNONMSGSRSV1.SONRS.FI.FID // "" | pad_left("0";5) | sub("00000";"") ),
@@ -761,7 +800,6 @@ def bank_info: {
 def add_missing_org:
 	if .FIORG//"" == "" then .FIORG = ($fidir[.FIFID//""] // "") end
 ;
-
 def wrap: if type == "array" then . else [.] end;
 def first: if type == "array" then .[0] else . end;
 
