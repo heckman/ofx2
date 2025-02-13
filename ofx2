@@ -766,16 +766,20 @@ def add_derived_file_info($s): $s | . + {
 	TZEND: to_time_zone($s.DTEND),
 	DTEND: to_date_time($s.DTEND)
 };
-def derived_transaction_fields: {
+def derived_transaction_fields:
+	(
+		if ((.NAME//"") != "" and (.MEMO//"") != "")
+		then (.NAME//"") + "; " + (.MEMO//"")
+		else (.NAME//"") + (.MEMO//"")
+		end
+	) as $desc |
+	{
 	DPOSTED: to_date(.DTPOSTED),
 	TZPOSTED: to_time_zone(.DTPOSTED),
 	DTPOSTED: to_date_time(.DTPOSTED),
-	DESC: (
-		if ((.NAME//"") != "" and (.MEMO//"") != "")
-		then (.NAME//"") + $desc_delim + (.MEMO//"")
-		else (.NAME//"") + (.MEMO//"")
-		end
-	),
+	DESC: $desc,
+	LINE1: $desc | split("; ?";"") | (if length < 2 then .[1] = "" end) | .[:-1] | join("; "),
+	LINE2: $desc | split("; ?";"") | (if length < 2 then .[1] = "" end) | .[-1],
 	# in transaction amounts, add zeros for cents if missing
 	TRNAMT: (
 		.TRNAMT | add_missing_cents
