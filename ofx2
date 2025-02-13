@@ -104,7 +104,7 @@ define_preset account 'account number, as it appears in OFX file' '.ACCTID'
 # Convert it with the command:
 # iconv -f WINDOWS-1252 -t UTF-8 fidir.txt | tr -d '\r' | tail -n +3 | sort > fidir-headless-sorted-utf8.tsv
 #
-# FIDIR_FILE="$HOME/.local/share/ofx2/fidir-headless-sorted-utf8.tsv"
+FIDIR_FILE="$HOME/.local/share/ofx2/fidir.tsv"
 # provide a regex that will be deleted from .FIORG values
 # that are found by looking them up in the FIDIR_FILE
 FIORG_REGEX_DELETE=' - (English|français)$'
