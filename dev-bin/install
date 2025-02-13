@@ -11,6 +11,8 @@ root="$(git rev-parse --show-toplevel)"
 }
 bin="$root/bin"
 
+
+
 [[ -d "$destination" ]] || {
 	echo "FAIL: destination directory '$destination' does not exist.">&2
 	exit 1
@@ -24,8 +26,20 @@ bin="$root/bin"
 	}
 }
 
-cp -i "$root/ofx2" "$root/ofx2csv" "$bin/ofx2xml" "$destination" &&
-{
-	echo "OK: installed ofx2, ofx2csv, and ofx2xml to '$destination'."
-}
+sources=( "$root/ofx2" "$root/ofx2csv" "$bin/ofx2xml" )
+sources_string="ofx2, ofx2csv, and ofx2xml"
+
+printf "Prepared to copy %s to %s.\n" "$sources_string" "$destination"
+read -p "proceed? (y/n [n]) " -r
+if [[ $REPLY =~ ^[Yy] ]]
+then
+	cp -i "${sources[@]}" "$destination" &&
+	{
+		echo "OK: installed ofx2, ofx2csv, and ofx2xml to '$destination'."
+	}
+else
+    echo "Installation aborted."
+    exit 1
+fi
+
 

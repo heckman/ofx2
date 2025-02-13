@@ -121,8 +121,6 @@ fidir_json(){ cat <<EOF
 EOF
 }
 
-# This joins NAME and MEMO tags to make a .DESC property.
-jq_description_delimiter='; '
 
 # Note on the NAMING CONVENTION for variables:
 #   a leading jq_ indicates the string is a fragment of jq code.
@@ -208,11 +206,14 @@ The following properties are derived from .TRNAMT
                 otherwise an emptt string. If you want this to be negative
                 you'll need to add a minus sign yourself.
 
-A description property is derived from .NAME and .MEMO
+These are derived from .NAME and .MEMO
 
    .DESC        If either NAME or MEMO is empty, DESC will be the same as the
                 non-empty one. When NAME and MEMO are both non-empty, DESC is
-                formed by joining them with the delimiter '$jq_description_delimiter'.
+                formed by joining them with the delimiter '; '.
+   .LINE1       The poriton of DESC preceeding the last semicolon.
+                This will introduce a space after any existing semicolons.
+   .LINE2       The poriton of DESC following the last semicolon.
 
 These are derived from the OFX's native DTPOSTED tag
 
@@ -724,7 +725,7 @@ normalize_json(){
 			"BASENAME": "'"$(basename "-s.ofx" "$ofx")"'"
 			}' \
 		--argjson fidir "$(fidir_json)" \
-		--arg desc_delim "$jq_description_delimiter" '
+		--arg desc_delim ';' '
 
 def add_missing_cents:
 	gsub("^(?<a>-?\\d+)$";"\(.a).00") | gsub("^(?<a>-?\\d+\\.\\d)$";"\(.a)0")
