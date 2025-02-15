@@ -813,12 +813,21 @@ elif has("CREDITCARDMSGSRSV1") then
 else
 	error("Unknown OFX type")
 end
-| ( add_derived_file_info($props + file_info) ) as $props
+| ( $props + file_info ) as $props
 | .BANKTRANLIST
-| . += $props
-| .TRANSACTIONS=(.STMTTRN | wrap | map( . + $props + derived_transaction_fields) )
+| .TRANSACTIONS=(.STMTTRN | wrap)
 | del(.STMTTRN)
-	'
+| ( (.TRANSACTIONS|map(.DTPOSTED)) + [.DTSTART] | min ) as $min_date
+| ( (.TRANSACTIONS|map(.DTPOSTED)) + [.DTEND] | max ) as $max_date
+| ( $props
+	| .DTSTART=$min_date
+	| .DTEND=$max_date
+) as $props
+| ( add_derived_file_info($props) ) as $props
+| . += $props
+| .TRANSACTIONS |= map( . + derived_transaction_fields + $props )
+
+'
 }
 
 main "$@"
