@@ -527,6 +527,7 @@ parse_args(){
 
 	json) shift
 		SUBCOMMAND=json
+		OPTIND=1
 		;;
 
 	xml) shift
