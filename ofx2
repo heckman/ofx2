@@ -245,40 +245,32 @@ jq_filename_format='
 '
 
 # format used for renaming ofx files, if blank will default to jq_filename_format
-jq_rename_format=''
+jq_rename_format='
+        (.FIORG | split(" ") | .[0])  # the first word of the bank name
+        + "-"
+        + .ACCTSFX # the account suffix
+        + " -- "
+        + (.DSTART | fmtd("%Y-%m%d") ) # start date as YYYY-MMDD
+        + " - "
+        + (.DEND | fmtd("%Y-%m%d") ) # end date as YYYY-MMDD
+'
 
 # format of info string
 jq_info_format='
 	.FIORG + ", account " + .ACCTID + ", from " +
-	.DSTART + " to " + .DEND + "."'
+	.DSTART + " to " + .DEND + "."
+'
 
 # these three jq arrays should correspond to the same output columns
 # columns headers
-jq_header_fields_array='
-	[
-		"ACCOUNT",
-		"ID",
-		"DATE POSTED",
-		"DESCRIPTION",
-		"AMOUNT",
-		"CURRENCY"
-	]
-'
+jq_header_fields_array='["DATE POSTED","STATUS","NAME","MEMO","WITHDRAWAL","DEPOSIT"]'
+
 # the header for the optional clculated hash.
 # note that strings must include surrounding quotes.
 jq_hash_header='"HASH"'
 
 # columns values
-jq_txn_fields_array='
-	[
-		( (.FIORG | split(" ") | .[0]) + "-" + .ACCTSFX ),
-		.FITID,
-		.DPOSTED,
-		.DESC,
-		.TRNAMT,
-		.CURDEF
-	]
-'
+jq_txn_fields_array='[.DPOSTED,"",.LINE1,.LINE2,.WITHDRAWAL,.DEPOSIT]'
 
 # parsed by miller(mlr) to generate a hash value
 mlr_hash_definition='md5($1 . $2)'
@@ -292,12 +284,12 @@ mlr_hash_definition='md5($1 . $2)'
 # a hash column will always be "" in the footer
 jq_balance_fields_array='
 	[
-		(.FIORG + "-" + .ACCTSFX),
+		.LEDGERD,
+		"",
 		"BALANCE",
 		.LEDGERD,
-		.LEDGERBAL,
 		"",
-		.CURDEF
+		""
 	]
 '
 
@@ -640,7 +632,7 @@ generate_filename(){ local extension="$1"
 	if new_basename="$(
 		if $USE_OFX_BASENAME
 		then basename "-s.ofx" "$ofx"
-		else jq -r "${jq_rename_format:-$jq_filename_format}" <<<"$json"
+		else jq -r "${jq_functions}${jq_rename_format:-$jq_filename_format}" <<<"$json"
 		fi
 	)" && [[ -n "${new_basename}" ]]
 	then echo "$new_basename.$extension"
