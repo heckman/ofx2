@@ -4,8 +4,9 @@
 
 destination="$HOME/bin"
 
-root="$(git rev-parse --show-toplevel)"
-[[ "${root##*/}" == 'ofx-txns' ]] || {
+# shellcheck disable=SC2015
+root="$(git rev-parse --show-toplevel 2>/dev/null)" &&
+[[ "$(realpath "$0")" == "$root"* ]] || {
 	echo "FAIL: should be run within ofx repository."
 	exit 1
 }
