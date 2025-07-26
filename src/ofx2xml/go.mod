@@ -1,4 +1,4 @@
-module ofx2json
+module ofx2xml
 
 go 1.23.1
 
