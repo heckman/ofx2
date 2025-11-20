@@ -761,6 +761,7 @@ def add_derived_file_info($s): $s | . + {
 	DTEND: to_date_time($s.DTEND)
 };
 def derived_transaction_fields:
+	# join NAME and MEMO fields as DESC with semicolons
 	(
 		if ((.NAME//"") != "" and (.MEMO//"") != "")
 		then (.NAME//"") + "; " + (.MEMO//"")
@@ -772,6 +773,7 @@ def derived_transaction_fields:
 	TZPOSTED: to_time_zone(.DTPOSTED),
 	DTPOSTED: to_date_time(.DTPOSTED),
 	DESC: $desc,
+	# split DESC into LINE1 (up to first semicolon) and LINE2 (remainder)
 	LINE1: $desc | split("; ?";"") | (if length < 2 then .[1] = "" end) | .[:-1] | join("; "),
 	LINE2: $desc | split("; ?";"") | (if length < 2 then .[1] = "" end) | .[-1],
 	# in transaction amounts, add zeros for cents if missing

@@ -4,4 +4,6 @@
 #
 # ofx2csv
 
+# Print transactions as comma-separated values
+# to file with an auto-generated name
 ofx2 csv -w "$@"
